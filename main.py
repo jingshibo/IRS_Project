@@ -1,7 +1,7 @@
 ##
 import pandas as pd
 from datetime import datetime
-from Utility_Functions import Grid_Search_Three_Models, Model_Training, Plotting_Functions, Preprocessing, Model_Structure
+from Utility_Functions import Grid_Search, Model_Training, Plotting_Functions, Preprocessing, Model_Structure
 import importlib
 
 
@@ -76,10 +76,11 @@ cv_folds = Preprocessing.build_normalized_cv_folds(
     random_seed=RANDOM_SEED,
 )
 
+
 ## Model Training
 importlib.reload(Model_Structure)
 importlib.reload(Model_Training)
-model_name = "shared_backbone_2ch"  # canonical options: "shared_backbone_2ch", "two_tower_late_fusion", "two_tower_mid_fusion_cnn"
+model_name = "shared_backbone_2ch"  # canonical options: "shared_backbone_2ch", "multi_scale_1d_cnn", "two_tower_late_fusion", "two_tower_mid_fusion_cnn", "tcn_classifier"
 # train_out: Classification_Models.TrainOutput means when train_out is assigned, it should match the type TrainOutput (only for IDE to check).
 train_out: Model_Training.TrainOutput = Model_Training.train_1d_cnn_cv(
     cv_folds=cv_folds,
@@ -88,10 +89,11 @@ train_out: Model_Training.TrainOutput = Model_Training.train_1d_cnn_cv(
     epochs=100,
     batch_size=32,
     lr=1e-4,
-    weight_decay=1e-3,
+    weight_decay=1e-4,
     label_smoothing=0.3,
-    dropout=0,
     patience=25,
+    random_shift_max_points=5,
+    random_shift_fill_mode="wrap",
     tensorboard_log_dir="runs/1d_cnn_cv",
 )
 print("Mean best val acc:", train_out["mean_best_val_acc"])
@@ -195,14 +197,14 @@ print("Model name:", model_name)
 ## Grid Search (optional)
 RUN_GRID_SEARCH = False
 if RUN_GRID_SEARCH:
-    importlib.reload(Grid_Search_Three_Models)
+    importlib.reload(Grid_Search)
     grid_search_space = {
         "base_channels": [32],  # no difference between 32 and 64, better than 16
         "kernel_size": [5],  # no difference between 5 and 7, better than 3, 9. 50 is better than others, seems larger is better? no much differences
         "l1": [512],  # the combination of (512, 256) is close to (1024, 128), better than others
         "l2": [256],
         "weight_decay": [1e-4],  # no difference from 1e-3 to 1e-5
-        "dropout": [0],  # 0 is better than 0.3 and much better than 0.5
+        "dropout": [0.1],  # 0 is better than 0.3 and much better than 0.5
         "label_smoothing": [0.3],  # higher than 0.1 is better, no difference between 0.2 and 0.3
         "lr": [1e-4],  # 1e-4 is better than other higher or lower values
         "batch_size": [32],  # 32 is better than 16 and larger values
@@ -211,14 +213,14 @@ if RUN_GRID_SEARCH:
         "avgpool_kernel_size": [3], # 3 is much better than 2
         "avgpool_stride": [2],
         "pool_type": ["max"],  # max is better than avg
-        "leaky_relu_alpha": [0.01],  # no obvious differece between the three
+        "leaky_relu_alpha": [0.05],  # no obvious differece between the three
         "scheduler_factor": [0.7],  # 0.7 is much better than 0.5 and 0.3
     }
     # Two-tower models require exactly 2 channels. Current selected_value_types should match that.
-    grid_out = Grid_Search_Three_Models.run_grid_search_three_models(
+    grid_out = Grid_Search.run_grid_search_three_models(
         cv_folds=cv_folds,
         search_space=grid_search_space,
-        model_names=("shared_backbone_2ch",),
+        model_names=("shared_backbone_2ch",),  # canonical options: "shared_backbone_2ch", "two_tower_late_fusion", "two_tower_mid_fusion_cnn", "tcn_classifier"
         class_order=class_order,
         epochs=100,
         patience=25,
@@ -226,9 +228,9 @@ if RUN_GRID_SEARCH:
         verbose_train=False,
         print_progress=True,
     )
-    Grid_Search_Three_Models.print_top_grid_results(grid_out, top_k=100)
+    Grid_Search.print_top_grid_results(grid_out, top_k=100)
     grid_result_dir = f"runs/grid_search_results/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    saved_paths = Grid_Search_Three_Models.save_grid_search_results(
+    saved_paths = Grid_Search.save_grid_search_results(
         grid_out,
         output_dir=grid_result_dir,
         prefix="three_models",
@@ -236,13 +238,14 @@ if RUN_GRID_SEARCH:
     print("Saved grid-search results:", saved_paths)
 
     # print output value summaries
-    n_above_095 = sum(trial.mean_best_val_acc > 0.953 for trial in grid_out["valid_trials"])
+
+    n_above_095 = sum(trial.mean_best_val_acc > 0.950 for trial in grid_out["valid_trials"])
     print(f"Number of valid grid-search results with mean_best_val_acc > 0.95: {n_above_095}")
-    grid_top100_param_freq = Grid_Search_Three_Models.summarize_top_param_frequencies(
+    grid_top100_param_freq = Grid_Search.summarize_top_param_frequencies(
         grid_out,
         top_k=100,
         include_model_name=True,
     )
     print("Top-100 parameter frequency summary dict:", grid_top100_param_freq)
-    Grid_Search_Three_Models.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
+    Grid_Search.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
     print("Best grid-search trial:", grid_out["best_trial"])

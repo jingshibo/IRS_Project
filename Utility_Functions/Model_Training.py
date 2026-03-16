@@ -9,7 +9,9 @@ from torch.utils.data import DataLoader, Dataset
 from Utility_Functions.Model_Structure import (
     DualBranchFusionCNNClassifier,
     DualBranchOneDCNNClassifier,
+    MultiScaleOneDCNNClassifier,
     OneDCNNClassifier,
+    TCNClassifier,
 )
 
 
@@ -23,15 +25,58 @@ class MicrowaveSignalDataset(Dataset):
     y shape: [N], integer class IDs for CrossEntropyLoss
     """
 
-    def __init__(self, x: np.ndarray, y: np.ndarray):
+    def __init__(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        random_shift_max_points: int = 0,
+        random_shift_fill_mode: str = "zero",
+    ):
         self.x = torch.as_tensor(x, dtype=torch.float32)
         self.y = torch.as_tensor(y, dtype=torch.long)
+        self.random_shift_max_points = int(random_shift_max_points)
+        self.random_shift_fill_mode = random_shift_fill_mode
+        if self.random_shift_max_points < 0:
+            raise ValueError(f"random_shift_max_points must be >= 0, got {self.random_shift_max_points}")
+        if self.random_shift_fill_mode not in {"zero", "edge", "wrap"}:
+            raise ValueError(
+                "random_shift_fill_mode must be one of {'zero', 'edge', 'wrap'}, "
+                f"got '{self.random_shift_fill_mode}'."
+            )
+
+    def _apply_random_shift(self, x: torch.Tensor) -> torch.Tensor:
+        if self.random_shift_max_points == 0:
+            return x
+
+        shift = int(torch.randint(-self.random_shift_max_points, self.random_shift_max_points + 1, (1,)).item())
+        if shift == 0:
+            return x
+
+        shifted = torch.roll(x, shifts=shift, dims=-1)
+        if self.random_shift_fill_mode == "wrap":
+            return shifted
+
+        if shift > 0:
+            if self.random_shift_fill_mode == "zero":
+                shifted[:, :shift] = 0
+            else:
+                shifted[:, :shift] = x[:, :1].expand(-1, shift)
+        else:
+            tail_width = -shift
+            if self.random_shift_fill_mode == "zero":
+                shifted[:, shift:] = 0
+            else:
+                shifted[:, shift:] = x[:, -1:].expand(-1, tail_width)
+        return shifted
 
     def __len__(self) -> int:
         return self.x.shape[0]
 
     def __getitem__(self, idx: int):
-        return self.x[idx], self.y[idx]
+        x = self.x[idx]
+        if self.random_shift_max_points > 0:
+            x = self._apply_random_shift(x.clone())
+        return x, self.y[idx]
 
 
 @dataclass  # Function similar to C structure: A lightweight object designed primarily for storing and access various types of data.
@@ -75,8 +120,9 @@ class TrainerConfig:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     label_smoothing: float = 0.05
-    dropout: float = 0.3
     patience: int = 15
+    random_shift_max_points: int = 0
+    random_shift_fill_mode: str = "zero"
     device: Optional[str] = None
     num_workers: int = 0
     tensorboard_log_dir: Optional[str] = None
@@ -106,8 +152,10 @@ class CNNTrainer:
         """Map legacy model names to canonical names."""
         alias_map = {
             "single_branch": "shared_backbone_2ch",
+            "multi_scale": "multi_scale_1d_cnn",
             "dual_branch": "two_tower_late_fusion",
             "dual_branch_fusion_cnn": "two_tower_mid_fusion_cnn",
+            "tcn": "tcn_classifier",
         }
         return alias_map.get(model_name, model_name)
 
@@ -224,7 +272,11 @@ class CNNTrainer:
             model = OneDCNNClassifier(
                 in_channels=in_channels,
                 num_classes=len(self.label_to_idx),
-                dropout=self.config.dropout,
+            )
+        elif model_name == "multi_scale_1d_cnn":
+            model = MultiScaleOneDCNNClassifier(
+                in_channels=in_channels,
+                num_classes=len(self.label_to_idx),
             )
         elif model_name == "two_tower_late_fusion":
             if in_channels != 2:
@@ -233,7 +285,6 @@ class CNNTrainer:
                 )
             model = DualBranchOneDCNNClassifier(
                 num_classes=len(self.label_to_idx),
-                dropout=self.config.dropout,
             )
         elif model_name == "two_tower_mid_fusion_cnn":
             if in_channels != 2:
@@ -242,12 +293,16 @@ class CNNTrainer:
                 )
             model = DualBranchFusionCNNClassifier(
                 num_classes=len(self.label_to_idx),
-                dropout=self.config.dropout,
+            )
+        elif model_name == "tcn_classifier":
+            model = TCNClassifier(
+                in_channels=in_channels,
+                num_classes=len(self.label_to_idx),
             )
         else:
             raise ValueError(
                 f"Unsupported model_name='{self.config.model_name}'. "
-                f"Use 'shared_backbone_2ch', 'two_tower_late_fusion', or 'two_tower_mid_fusion_cnn'."
+                f"Use 'shared_backbone_2ch', 'multi_scale_1d_cnn', 'two_tower_late_fusion', 'two_tower_mid_fusion_cnn', or 'tcn_classifier'."
             )
         return model.to(self.device)
 
@@ -259,7 +314,12 @@ class CNNTrainer:
         y_train = self._encode_labels(fold_data["y_train"])
         y_val = self._encode_labels(fold_data["y_val"])
 
-        train_ds = MicrowaveSignalDataset(x_train, y_train)
+        train_ds = MicrowaveSignalDataset(
+            x_train,
+            y_train,
+            random_shift_max_points=self.config.random_shift_max_points,
+            random_shift_fill_mode=self.config.random_shift_fill_mode,
+        )
         val_ds = MicrowaveSignalDataset(x_val, y_val)
         train_loader = DataLoader(train_ds, batch_size=self.config.batch_size, shuffle=True, num_workers=self.config.num_workers)
         val_loader = DataLoader(val_ds, batch_size=self.config.batch_size, shuffle=False, num_workers=self.config.num_workers)
@@ -395,8 +455,9 @@ def train_1d_cnn_cv(
     lr: float = 1e-3,
     weight_decay: float = 1e-4,
     label_smoothing: float = 0.05,
-    dropout: float = 0.3,
     patience: int = 15,
+    random_shift_max_points: int = 0,
+    random_shift_fill_mode: str = "zero",
     device: Optional[str] = None,
     num_workers: int = 0,
     tensorboard_log_dir: Optional[str] = None,
@@ -416,8 +477,9 @@ def train_1d_cnn_cv(
         lr=lr,
         weight_decay=weight_decay,
         label_smoothing=label_smoothing,
-        dropout=dropout,
         patience=patience,
+        random_shift_max_points=random_shift_max_points,
+        random_shift_fill_mode=random_shift_fill_mode,
         device=device,
         num_workers=num_workers,
         tensorboard_log_dir=tensorboard_log_dir,
@@ -443,7 +505,6 @@ def print_model_summary(
     batch_size: int = 64,
     in_channels: int = 2,
     num_classes: int = 3,
-    dropout: float = 0.3,
     model_name: str = "shared_backbone_2ch",
 ) -> None:
     """Print model input/output shapes and parameter counts via torchinfo."""
@@ -457,21 +518,28 @@ def print_model_summary(
         model = OneDCNNClassifier(
             in_channels=in_channels,
             num_classes=num_classes,
-            dropout=dropout,
+        )
+    elif normalized_model_name == "multi_scale_1d_cnn":
+        model = MultiScaleOneDCNNClassifier(
+            in_channels=in_channels,
+            num_classes=num_classes,
         )
     elif normalized_model_name == "two_tower_late_fusion":
         model = DualBranchOneDCNNClassifier(
             num_classes=num_classes,
-            dropout=dropout,
         )
     elif normalized_model_name == "two_tower_mid_fusion_cnn":
         model = DualBranchFusionCNNClassifier(
             num_classes=num_classes,
-            dropout=dropout,
+        )
+    elif normalized_model_name == "tcn_classifier":
+        model = TCNClassifier(
+            in_channels=in_channels,
+            num_classes=num_classes,
         )
     else:
         raise ValueError(
-            "model_name must be 'shared_backbone_2ch', 'two_tower_late_fusion', or 'two_tower_mid_fusion_cnn'"
+            "model_name must be 'shared_backbone_2ch', 'multi_scale_1d_cnn', 'two_tower_late_fusion', 'two_tower_mid_fusion_cnn', or 'tcn_classifier'"
         )
     summary(
         model,
@@ -486,6 +554,5 @@ if __name__ == "__main__":
         batch_size=64,
         in_channels=3,
         num_classes=3,
-        dropout=0.3,
         model_name="shared_backbone_2ch",
     )
