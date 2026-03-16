@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import savgol_filter
+from scipy.ndimage import median_filter
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -50,6 +51,30 @@ def apply_savgol_filter_dict(data_dict, window_length=11, polyorder=3, deriv=0, 
         safe_window = window_length if n_features >= window_length else (n_features if n_features % 2 == 1 else n_features - 1)
         if safe_window > polyorder and safe_window >= 3:
             filtered_values = savgol_filter(data_df.values, window_length=safe_window, polyorder=polyorder, deriv=deriv, mode=mode)
+            filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
+        else:
+            filtered_dict[key] = data_df.copy()
+    return filtered_dict
+
+
+def apply_median_filter_dict(data_dict, kernel_size=5, mode="nearest"):
+    """Apply a row-wise median filter to each class DataFrame in a dict."""
+    if kernel_size < 1:
+        raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
+
+    filtered_dict = {}
+    for key, data_df in data_dict.items():
+        n_features = data_df.shape[1]
+        safe_kernel = min(kernel_size, n_features)
+        if safe_kernel % 2 == 0:
+            safe_kernel -= 1
+
+        if safe_kernel >= 1:
+            filtered_values = median_filter(
+                data_df.values,
+                size=(1, safe_kernel),
+                mode=mode,
+            )
             filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
         else:
             filtered_dict[key] = data_df.copy()
@@ -216,7 +241,12 @@ def normalize_fold_channels(x_train, x_val):
     return x_train_norm, x_val_norm, scalers
 
 
-def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42):
+def clip_normalized_fold_channels(x_train, x_val, max_value=15.0):
+    """Apply elementwise upper clipping to normalized fold arrays."""
+    return np.clip(x_train, a_min=None, a_max=max_value), np.clip(x_val, a_min=None, a_max=max_value)
+
+
+def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42, clip_max_value=None):
     folds = []
     cv_indices = build_stratified_cv_indices(y_trainval, n_splits=n_splits, random_seed=random_seed)
 
@@ -227,6 +257,12 @@ def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42
         y_val = y_trainval[val_idx]
 
         x_train_norm, x_val_norm, scalers = normalize_fold_channels(x_train, x_val)
+        if clip_max_value is not None:
+            x_train_norm, x_val_norm = clip_normalized_fold_channels(
+                x_train_norm,
+                x_val_norm,
+                max_value=clip_max_value,
+            )
 
         fold_payload = {
             "fold": fold_id,
@@ -237,6 +273,7 @@ def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42
             "X_val": x_val_norm,
             "y_val": y_val,
             "scalers": scalers,
+            "clip_max_value": clip_max_value,
         }
         # Backward-compatible keys for legacy 2-channel code paths.
         if len(scalers) >= 1:
@@ -249,3 +286,54 @@ def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42
         folds.append(fold_payload)
 
     return folds
+
+
+def find_cv_fold_channel_threshold_hits(cv_folds, channel_idx=0, threshold=15.0):
+    """Return samples whose normalized channel values exceed a threshold.
+
+    Scans both train and validation splits for every fold. One result row is
+    returned per sample with at least one point satisfying `value > threshold`.
+    """
+    hits = []
+
+    for fold_data in cv_folds:
+        fold_id = int(fold_data["fold"])
+
+        for split in ("train", "val"):
+            x_key = "X_train" if split == "train" else "X_val"
+            y_key = "y_train" if split == "train" else "y_val"
+            idx_key = "train_idx" if split == "train" else "val_idx"
+
+            x_split = np.asarray(fold_data[x_key])
+            y_split = np.asarray(fold_data[y_key])
+            global_indices = np.asarray(fold_data[idx_key])
+
+            if channel_idx < 0 or channel_idx >= x_split.shape[1]:
+                raise IndexError(f"channel_idx {channel_idx} is out of range for input with {x_split.shape[1]} channels")
+
+            channel_values = x_split[:, channel_idx, :]
+
+            for sample_idx, signal in enumerate(channel_values):
+                hit_points = np.flatnonzero(signal > threshold)
+                if hit_points.size == 0:
+                    continue
+
+                hit_values = signal[hit_points]
+                hits.append(
+                    {
+                        "fold": fold_id,
+                        "split": split,
+                        "sample_idx": int(sample_idx),
+                        "global_idx": int(global_indices[sample_idx]),
+                        "label": y_split[sample_idx],
+                        "channel_idx": int(channel_idx),
+                        "threshold": float(threshold),
+                        "num_hit_points": int(hit_points.size),
+                        "first_hit_point": int(hit_points[0]),
+                        "max_value": float(hit_values.max()),
+                        "max_point": int(hit_points[np.argmax(hit_values)]),
+                        "hit_points": hit_points.tolist(),
+                    }
+                )
+
+    return hits
