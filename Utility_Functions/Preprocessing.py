@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from scipy.signal import savgol_filter
-from scipy.ndimage import median_filter
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -57,27 +56,71 @@ def apply_savgol_filter_dict(data_dict, window_length=11, polyorder=3, deriv=0, 
     return filtered_dict
 
 
-def apply_median_filter_dict(data_dict, kernel_size=5, mode="nearest"):
-    """Apply a row-wise median filter to each class DataFrame in a dict."""
-    if kernel_size < 1:
-        raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
+def _resolve_hampel_radius(radius=5):
+    if radius < 1:
+        raise ValueError(f"radius must be >= 1, got {radius}")
+    return int(radius)
 
+
+def _hampel_filter_1d(signal, radius=5, n_sigmas=3.0, scale=1.4826):
+    """Replace outliers using a Hampel filter on a 1D signal."""
+    signal = np.asarray(signal, dtype=float)
+    if signal.ndim != 1:
+        raise ValueError(f"signal must be 1D, got shape {signal.shape}")
+    radius = _resolve_hampel_radius(radius=radius)
+
+    filtered = signal.copy()
+
+    for idx in range(signal.shape[0]):
+        start = max(0, idx - radius)
+        end = min(signal.shape[0], idx + radius + 1)
+        window = signal[start:end]
+        median = np.median(window)
+        mad = np.median(np.abs(window - median))
+        threshold = n_sigmas * scale * mad
+
+        if mad == 0:
+            if signal[idx] != median:
+                filtered[idx] = median
+            continue
+
+        if abs(signal[idx] - median) > threshold:
+            filtered[idx] = median
+
+    return filtered
+
+
+def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
+    """Apply a row-wise Hampel filter to a 2D array [n_samples, signal_length]."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 2:
+        raise ValueError(f"values must be 2D, got shape {values.shape}")
+
+    radius = _resolve_hampel_radius(radius=radius)
+    padded = np.pad(values, ((0, 0), (radius, radius)), mode="reflect")
+    windows = np.lib.stride_tricks.sliding_window_view(padded, 2 * radius + 1, axis=1)
+
+    medians = np.median(windows, axis=-1)
+    mad = np.median(np.abs(windows - medians[..., np.newaxis]), axis=-1)
+    thresholds = n_sigmas * scale * mad
+
+    filtered = values.copy()
+    deviations = np.abs(values - medians)
+    replace_mask = deviations > thresholds
+    replace_mask |= (mad == 0) & (values != medians)
+    filtered[replace_mask] = medians[replace_mask]
+
+    return filtered
+
+
+def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0):
+    """Apply a row-wise Hampel filter to each class DataFrame in a dict."""
+    radius = _resolve_hampel_radius(radius=radius)
     filtered_dict = {}
     for key, data_df in data_dict.items():
-        n_features = data_df.shape[1]
-        safe_kernel = min(kernel_size, n_features)
-        if safe_kernel % 2 == 0:
-            safe_kernel -= 1
-
-        if safe_kernel >= 1:
-            filtered_values = median_filter(
-                data_df.values,
-                size=(1, safe_kernel),
-                mode=mode,
-            )
-            filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
-        else:
-            filtered_dict[key] = data_df.copy()
+        values = np.asarray(data_df.values, dtype=float)
+        filtered_values = apply_hampel_filter_array(values, radius=radius, n_sigmas=n_sigmas)
+        filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
     return filtered_dict
 
 

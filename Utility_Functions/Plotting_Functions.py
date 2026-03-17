@@ -100,6 +100,64 @@ def plot_class_samples_vertical(
     plt.show()
 
 
+def plot_random_class_samples_subplots(
+    data_dict,
+    class_order=("LOW", "TARGET", "HIGH"),
+    n_samples=6,
+    ncols=3,
+    title_prefix="Random Samples",
+    ylabel="Value",
+    random_seed=None,
+):
+    """Plot random samples in separate subplots, one figure per class."""
+    if n_samples < 1:
+        raise ValueError(f"n_samples must be >= 1, got {n_samples}")
+    if ncols < 1:
+        raise ValueError(f"ncols must be >= 1, got {ncols}")
+
+    rng = np.random.default_rng(random_seed)
+    selected_classes = _pick_classes(data_dict, class_order, len(class_order))
+
+    for cls in selected_classes:
+        class_df = data_dict[cls]
+        if len(class_df) == 0:
+            continue
+
+        n_to_plot = min(n_samples, len(class_df))
+        sampled_indices = rng.choice(len(class_df), size=n_to_plot, replace=False)
+        nrows = int(np.ceil(n_to_plot / ncols))
+
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(5 * ncols, 3 * nrows),
+            sharex=True,
+            sharey=True,
+        )
+        axes = np.atleast_1d(axes).reshape(nrows, ncols)
+
+        for plot_idx, sample_idx in enumerate(sampled_indices):
+            row_idx, col_idx = divmod(plot_idx, ncols)
+            ax = axes[row_idx, col_idx]
+            sample = class_df.iloc[sample_idx]
+            ax.plot(sample.values, linewidth=1.2)
+            ax.set_title(f"{cls} sample {sample_idx}")
+            ax.set_ylabel(ylabel)
+            ax.grid(True, alpha=0.3)
+
+        for empty_idx in range(n_to_plot, nrows * ncols):
+            row_idx, col_idx = divmod(empty_idx, ncols)
+            axes[row_idx, col_idx].axis("off")
+
+        for ax in axes[-1, :]:
+            if ax.has_data():
+                ax.set_xlabel("Feature index")
+
+        fig.suptitle(f"{title_prefix} - {cls}")
+        fig.tight_layout()
+        plt.show()
+
+
 def plot_top_classification_examples(
     train_out,
     cv_folds,

@@ -1,8 +1,9 @@
 ##
 import pandas as pd
 from datetime import datetime
-from Utility_Functions import Grid_Search, Model_Training, Plotting_Functions, Preprocessing, Model_Structure
+from Utility_Functions import Grid_Search, Model_Training, Preprocessing, Model_Structure
 import importlib
+import viewing
 
 
 ## Load data
@@ -16,35 +17,23 @@ categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) 
 signal_segments = ((000, 1000), (1800, 3500)) # Slice raw signals before preprocessing signal_segments = ((000, 4000),).
 # signal_segments = ((0, 4000),)
 sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segments=signal_segments)
-sliced_filtered_dict = Preprocessing.apply_median_filter_dict(sliced_dict, kernel_size=5)
 
 
 ## Preprocessing
-# Downsample after slicing, before any derivative/filter preprocessing.
-original_dict = Preprocessing.downsample_dict_signals(sliced_filtered_dict, step=1, offset=0)
-# Smooth Original signals with Savitzky-Golay filter (not necessary but better).
-original_filtered_dict = Preprocessing.apply_savgol_filter_dict(original_dict, window_length=51, polyorder=3, deriv=0)
+# Hampel filtering, removing outliers (before downsampling, which can hide or distort spikes)
+sliced_filtered_dict = Preprocessing.apply_hampel_filter_dict(sliced_dict, radius=5, n_sigmas=3.0)
+# Smooth Original signals with Savitzky-Golay filter (before downsampling, which can cause aliasing).
+original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=51, polyorder=3, deriv=0)
+# Downsample after filtering, before SG derivative (performing on clean signal to avoid amplified noise due to derivative).
+original_filtered_dict = Preprocessing.downsample_dict_signals(original_filtered_dict, step=1, offset=0)
 # central difference calculate of each sample
 central_diff_dict = Preprocessing.compute_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
 central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff_dict, window_length=201, polyorder=3, deriv=0)
 # second central difference calculate of each sample
-second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_dict)
+second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
 second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=51, polyorder=3, deriv=0)
-
-# Row-wise average for each sample in each class group.
-original_stats = Preprocessing.compute_mean_std_stats(original_dict)
-# Mean/std stats for original, same structure as overall_stats.
-original_filtered_stats = Preprocessing.compute_mean_std_stats(original_filtered_dict)
-# Mean/std stats for central differences, same structure as overall_stats.
-central_diff_stats = Preprocessing.compute_mean_std_stats(central_diff_dict)
-# Mean/std stats for central differences, same structure as overall_stats.
-central_diff_filtered_stats = Preprocessing.compute_mean_std_stats(central_diff_filtered_dict)
-# Mean/std stats for second central differences.
-second_diff_stats = Preprocessing.compute_mean_std_stats(second_diff_dict)
-# Mean/std stats for filtered second central differences.
-second_diff_filtered_stats = Preprocessing.compute_mean_std_stats(second_diff_filtered_dict)
 
 
 ## Split
@@ -62,10 +51,7 @@ x_all, y_all = Preprocessing.build_multi_channel_dataset(
     data_dict_map=value_type_dicts,
     selected_types=selected_value_types,
 )
-x_all_original_raw, y_all_original_raw = Preprocessing.build_multi_channel_dataset(
-    data_dict_map={"original": original_dict},
-    selected_types=("original",),
-)
+
 # Step 1: random holdout 15% test set.
 X_trainval, X_test, y_trainval, y_test = Preprocessing.split_holdout(
     x_all,
@@ -73,37 +59,14 @@ X_trainval, X_test, y_trainval, y_test = Preprocessing.split_holdout(
     test_size=0.15,
     random_seed=RANDOM_SEED,
 )
-X_trainval_original_raw, X_test_original_raw, y_trainval_original_raw, y_test_original_raw = Preprocessing.split_holdout(
-    x_all_original_raw,
-    y_all_original_raw,
-    test_size=0.15,
-    random_seed=RANDOM_SEED,
-)
+
 # Step 2: stratified 5-fold on remaining 85% + fold-wise normalization.
 cv_folds = Preprocessing.build_normalized_cv_folds(
     X_trainval,
     y_trainval,
     n_splits=5,
     random_seed=RANDOM_SEED,
-    clip_max_value=15.0,
-)
-
-
-## View if there are any abnormal data in the normalized dataset
-normalized_threshold_hits = Preprocessing.find_cv_fold_channel_threshold_hits(
-    cv_folds=cv_folds,
-    channel_idx=0,
-    threshold=14.0,
-)
-
-Plotting_Functions.plot_threshold_hit_signals_by_fold(
-    cv_folds=cv_folds,
-    threshold_hits=normalized_threshold_hits,
-    split=None,
-    channel_idx=0,
-    nrows=4,
-    ncols=4,
-    title_prefix="Normalized threshold-hit signals",
+    clip_max_value=None,
 )
 
 
@@ -131,189 +94,103 @@ print("Class index mapping:", train_out["label_to_idx"])
 print("Model name:", model_name)
 
 
-## Plot classified samples
-selected_plot_class = "LOW"  # Set to "LOW", "TARGET", "HIGH", or None for all classes.
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="misclassified",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
 
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="correct",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
+## Optional plotting
+PLOT_OPTIONS = {
+    "threshold_hits": False,
+    "classification_examples": False,
+    "reference_samples": False,
+    "mean_std_overview": False,
+    "random_sample_overview": False,
+    "normalized_data_inspection": False,
+}
 
-selected_plot_class = "TARGET"  # Set to "LOW", "TARGET", "HIGH", or None for all classes.
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="misclassified",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
+PLOT_CONFIG = {
+    "threshold_hits": {
+        "channel_idx": 0,
+        "threshold": 25.0,
+        "split": None,
+        "nrows": 4,
+        "ncols": 4,
+        "title_prefix": "Normalized threshold-hit signals",
+    },
+    "classification_examples": {
+        "classes": class_order,
+        "top_k": 10,
+        "channel_idx": 0,
+    },
+    "reference_samples": {
+        "fold_id": 4,
+        "sample_idx": 136,
+        "channel_idx": 0,
+    },
+    "random_sample_overview": {
+        "n_samples": 30,
+        "ncols": 6,
+    },
+    "normalized_data_inspection": {
+        "fold_id": 0,
+        "n_samples": 5,
+    },
+}
 
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="correct",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
+if PLOT_OPTIONS["threshold_hits"]:
+    viewing.plot_threshold_hits(
+        cv_folds=cv_folds,
+        **PLOT_CONFIG["threshold_hits"],
+    )
 
-selected_plot_class = "HIGH"  # Set to "LOW", "TARGET", "HIGH", or None for all classes.
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="misclassified",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
+if PLOT_OPTIONS["classification_examples"]:
+    viewing.plot_classification_examples(
+        train_out=train_out,
+        cv_folds=cv_folds,
+        class_order=class_order,
+        **PLOT_CONFIG["classification_examples"],
+    )
 
-Plotting_Functions.plot_top_classification_examples(
-    train_out=train_out,
-    cv_folds=cv_folds,
-    class_order=class_order,
-    top_k=10,
-    kind="correct",
-    channel_idx=0,
-    selected_class=selected_plot_class,
-)
+if PLOT_OPTIONS["reference_samples"]:
+    viewing.plot_reference_samples(
+        sliced_dict=sliced_dict,
+        sliced_filtered_dict=sliced_filtered_dict,
+        x_trainval=X_trainval,
+        y_trainval=y_trainval,
+        cv_folds=cv_folds,
+        train_out=train_out,
+        **PLOT_CONFIG["reference_samples"],
+    )
 
-Plotting_Functions.plot_fold_sample(
-    cv_folds=cv_folds,
-    fold_id=0,
-    sample_idx=296,
-    channel_idx=0,
-    split="val",
-    title_prefix="Normalized selected input",
-    train_out=train_out,
-)
+if PLOT_OPTIONS["mean_std_overview"]:
+    viewing.plot_mean_std_overview(
+        class_order=class_order,
+        original_dict=sliced_dict,
+        original_filtered_dict=original_filtered_dict,
+        central_diff_dict=central_diff_dict,
+        central_diff_filtered_dict=central_diff_filtered_dict,
+        second_diff_dict=second_diff_dict,
+        second_diff_filtered_dict=second_diff_filtered_dict,
+    )
 
-Plotting_Functions.plot_reference_sample_from_fold(
-    x_reference=X_trainval,
-    y_reference=y_trainval,
-    cv_folds=cv_folds,
-    fold_id=0,
-    sample_idx=296,
-    channel_idx=0,
-    title_prefix="Unnormalized selected input",
-)
+if PLOT_OPTIONS["random_sample_overview"]:
+    viewing.plot_random_sample_overview(
+        class_order=class_order,
+        random_seed=RANDOM_SEED,
+        sliced_dict=sliced_dict,
+        sliced_filtered_dict=sliced_filtered_dict,
+        original_filtered_dict=original_filtered_dict,
+        central_diff_dict=central_diff_dict,
+        central_diff_filtered_dict=central_diff_filtered_dict,
+        second_diff_dict=second_diff_dict,
+        second_diff_filtered_dict=second_diff_filtered_dict,
+        **PLOT_CONFIG["random_sample_overview"],
+    )
 
-Plotting_Functions.plot_reference_sample_from_fold(
-    x_reference=X_trainval_original_raw,
-    y_reference=y_trainval_original_raw,
-    cv_folds=cv_folds,
-    fold_id=0,
-    sample_idx=296,
-    channel_idx=0,
-    title_prefix="Original raw signal before filtering",
-)
-
-
-## Plot class mean-std curves.
-# # Plot original data mean-std curves
-# Plotting_Functions.plot_mean_std_curves(original_stats, class_order=class_order, title="Class Mean-Std Curves", ylabel="Mean value")
-#
-# # Plot filtered original data mean-std curves
-# Plotting_Functions.plot_mean_std_curves(original_filtered_stats, class_order=class_order, title="Filtered Class Mean-Std Curves", ylabel="Mean value")
-#
-# # Plot raw central-difference mean-std curves.
-# Plotting_Functions.plot_mean_std_curves(central_diff_stats, class_order=class_order, title="Central Difference Mean-Std Curves",
-#                                         ylabel="Central difference value", ylim=(-15, 15))
-#
-# # Plot filtered central-difference mean-std curves.
-# Plotting_Functions.plot_mean_std_curves(central_diff_filtered_stats, class_order=class_order,
-#                                         title="Filtered Central Difference Mean-Std Curves", ylabel="Central difference value", ylim=(-5, 5))
-#
-# # Plot raw second-difference mean-std curves.
-# Plotting_Functions.plot_mean_std_curves(second_diff_stats, class_order=class_order,
-#                                         title="Second Difference Mean-Std Curves",
-#                                         ylabel="Second difference value", ylim=(-10, 10))
-#
-# # Plot filtered second-difference mean-std curves.
-# Plotting_Functions.plot_mean_std_curves(second_diff_filtered_stats, class_order=class_order,
-#                                         title="Filtered Second Difference Mean-Std Curves",
-#                                         ylabel="Second difference value", ylim=(-1, 1))
-
-
-## Plot example samples
-# Plot five original samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(original_dict, class_order=class_order, n_samples=10,
-#                                                title="Original Samples by Class", ylabel="Original value")
-#
-# # Plot five filtered original samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(original_filtered_dict, class_order=class_order, n_samples=10,
-#                                                title="Filtered Original Samples by Class", ylabel="Original value")
-#
-# # Plot five central-difference samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(central_diff_dict, class_order=class_order, n_samples=5,
-#                                                title="Central-Difference Samples by Class", ylabel="Central difference value")
-#
-# # Plot five filtered central-difference samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(central_diff_filtered_dict, class_order=class_order, n_samples=5,
-#                                                title="Filtered Central-Difference Samples by Class", ylabel="Central difference value")
-#
-# # Plot five second-difference samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(second_diff_dict, class_order=class_order, n_samples=5,
-#                                                title="Second-Difference Samples by Class", ylabel="Second difference value")
-#
-# # Plot five filtered second-difference samples per class in three vertical subplots.
-# Plotting_Functions.plot_class_samples_vertical(second_diff_filtered_dict, class_order=class_order, n_samples=5,
-#                                                title="Filtered Second-Difference Samples by Class", ylabel="Second difference value")
-
-# Example: plot the first row from the original dataframe (excluding label column)
-# Plotting_Functions.plot_single_sample(df, row_index=0, label_column=label_col)
-
-
-
-
-
-##  Inspect normalized data
-# #  from the first CV fold.
-# first_fold = cv_folds[0]
-# X_train_norm = first_fold["X_train"]
-# y_train_norm = first_fold["y_train"]
-#
-# for ch_idx, value_type_name in enumerate(selected_value_types):
-#     normalized_channel_dict = {}
-#     for cls in class_order:
-#         class_mask = y_train_norm == cls
-#         if class_mask.any():
-#             normalized_channel_dict[cls] = pd.DataFrame(X_train_norm[class_mask, ch_idx, :])
-#
-#     normalized_channel_stats = Preprocessing.compute_mean_std_stats(normalized_channel_dict)
-#     pretty_name = value_type_name.replace("_", " ").title()
-#
-#     Plotting_Functions.plot_mean_std_curves(
-#         normalized_channel_stats,
-#         class_order=class_order,
-#         title=f"Normalized {pretty_name} Mean-Std Curves (Fold 0 Train)",
-#         ylabel=f"Normalized {value_type_name} value",
-#     )
-#
-#     Plotting_Functions.plot_class_samples_vertical(
-#         normalized_channel_dict,
-#         class_order=class_order,
-#         n_samples=5,
-#         title=f"Normalized {pretty_name} Samples by Class (Fold 0 Train)",
-#         ylabel=f"Normalized {value_type_name} value",
-#     )
+if PLOT_OPTIONS["normalized_data_inspection"]:
+    viewing.inspect_normalized_data(
+        cv_folds=cv_folds,
+        class_order=class_order,
+        selected_value_types=selected_value_types,
+        **PLOT_CONFIG["normalized_data_inspection"],
+    )
 
 
 
