@@ -113,13 +113,34 @@ def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     return filtered
 
 
-def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0):
+def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0, transform="none"):
     """Apply a row-wise Hampel filter to each class DataFrame in a dict."""
     radius = _resolve_hampel_radius(radius=radius)
+    transform = str(transform).lower()
+    valid_transforms = {"none", "log", "sqrt"}
+    if transform not in valid_transforms:
+        raise ValueError(f"transform must be one of {sorted(valid_transforms)}, got {transform!r}")
+
     filtered_dict = {}
     for key, data_df in data_dict.items():
         values = np.asarray(data_df.values, dtype=float)
         filtered_values = apply_hampel_filter_array(values, radius=radius, n_sigmas=n_sigmas)
+
+        if transform == "log":
+            if np.any(filtered_values < 0):
+                raise ValueError(
+                    f"log1p transform requires non-negative values; "
+                    f"class '{key}' has minimum {filtered_values.min():.6g}"
+                )
+            filtered_values = np.log1p(filtered_values)
+        elif transform == "sqrt":
+            if np.any(filtered_values < 0):
+                raise ValueError(
+                    f"sqrt transform requires non-negative values; "
+                    f"class '{key}' has minimum {filtered_values.min():.6g}"
+                )
+            filtered_values = np.sqrt(filtered_values)
+
         filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
     return filtered_dict
 
@@ -251,6 +272,33 @@ def downsample_dict_signals(data_dict, step=2, offset=0):
     for key, df in data_dict.items():
         downsampled[key] = df.iloc[:, offset::step].copy()
     return downsampled
+
+
+def calculate_residual_dict(minuend_dict, subtrahend_dict):
+    """Subtract matching class DataFrames from two dict[label -> DataFrame] mappings."""
+    minuend_keys = set(minuend_dict.keys())
+    subtrahend_keys = set(subtrahend_dict.keys())
+    if minuend_keys != subtrahend_keys:
+        raise ValueError(
+            f"Dictionary key mismatch: {sorted(minuend_keys)} vs {sorted(subtrahend_keys)}"
+        )
+
+    residual_dict = {}
+    for key in minuend_dict:
+        minuend_df = minuend_dict[key]
+        subtrahend_df = subtrahend_dict[key]
+        if minuend_df.shape != subtrahend_df.shape:
+            raise ValueError(
+                f"Shape mismatch for class '{key}': {minuend_df.shape} vs {subtrahend_df.shape}"
+            )
+        if not minuend_df.columns.equals(subtrahend_df.columns):
+            raise ValueError(f"Column mismatch for class '{key}'")
+        if not minuend_df.index.equals(subtrahend_df.index):
+            raise ValueError(f"Index mismatch for class '{key}'")
+
+        residual_dict[key] = minuend_df - subtrahend_df
+
+    return residual_dict
 
 
 def split_holdout(x_all, y_all, test_size=0.15, random_seed=42):

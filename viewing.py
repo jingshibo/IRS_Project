@@ -50,7 +50,7 @@ def plot_classification_examples(
             )
 
 
-def plot_reference_samples(
+def plot_certain_samples(
     sliced_dict,
     sliced_filtered_dict,
     x_trainval,
@@ -166,10 +166,13 @@ def plot_random_sample_overview(
     sliced_dict,
     sliced_filtered_dict,
     original_filtered_dict,
+    original_envelope_dict,
+    original_residual_dict,
     central_diff_dict,
     central_diff_filtered_dict,
     second_diff_dict,
     second_diff_filtered_dict,
+    classes=None,
     n_samples=30,
     ncols=6,
 ):
@@ -177,6 +180,8 @@ def plot_random_sample_overview(
         (sliced_dict, "Raw Signals Before Filtering"),
         (sliced_filtered_dict, "Raw Signals After Hampel Filtering"),
         (original_filtered_dict, "Raw Signals After SG Filtering"),
+        (original_envelope_dict, "Original Envelope Signals"),
+        (original_residual_dict, "Original Residual Signals"),
         (central_diff_dict, "Raw Central Difference Signals"),
         (central_diff_filtered_dict, "Filtered Central Difference Signals"),
         (second_diff_dict, "Raw Second Difference Signals"),
@@ -187,6 +192,7 @@ def plot_random_sample_overview(
         Plotting_Functions.plot_random_class_samples_subplots(
             data_dict,
             class_order=class_order,
+            selected_classes=classes,
             n_samples=n_samples,
             ncols=ncols,
             title_prefix=title_prefix,

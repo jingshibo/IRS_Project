@@ -21,9 +21,9 @@ sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segment
 
 ## Preprocessing
 # Hampel filtering, removing outliers (before downsampling, which can hide or distort spikes)
-sliced_filtered_dict = Preprocessing.apply_hampel_filter_dict(sliced_dict, radius=5, n_sigmas=3.0)
+sliced_filtered_dict = Preprocessing.apply_hampel_filter_dict(sliced_dict, radius=5, n_sigmas=3.0, transform="sqrt")
 # Smooth Original signals with Savitzky-Golay filter (before downsampling, which can cause aliasing).
-original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=51, polyorder=3, deriv=0)
+original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=31, polyorder=3, deriv=0)
 # Downsample after filtering, before SG derivative (performing on clean signal to avoid amplified noise due to derivative).
 original_filtered_dict = Preprocessing.downsample_dict_signals(original_filtered_dict, step=1, offset=0)
 # central difference calculate of each sample
@@ -33,7 +33,11 @@ central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff
 # second central difference calculate of each sample
 second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
-second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=51, polyorder=3, deriv=0)
+second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=201, polyorder=3, deriv=0)
+# envelope Original signals with Savitzky-Golay filter (for residual calculation).
+original_envelope_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=201, polyorder=3, deriv=0)
+# calculate the residual of the original signal (separating coarse and fine information)
+original_residual_dict = Preprocessing.calculate_residual_dict(original_filtered_dict, original_envelope_dict)
 
 
 ## Split
@@ -44,8 +48,10 @@ value_type_dicts = {
     "original": original_filtered_dict,
     "first_diff_filtered": central_diff_filtered_dict,
     "second_diff_filtered": second_diff_filtered_dict,
+    "residual": original_residual_dict
 }
-selected_value_types = ["original", "first_diff_filtered"]  # e.g. ("original", "first_diff_filtered", "second_diff_filtered")
+selected_value_types = ["original", "first_diff_filtered", "second_diff_filtered",
+                        "residual"]  # e.g. ("original", "first_diff_filtered", "second_diff_filtered", "residual")
 
 x_all, y_all = Preprocessing.build_multi_channel_dataset(
     data_dict_map=value_type_dicts,
@@ -94,14 +100,14 @@ print("Class index mapping:", train_out["label_to_idx"])
 print("Model name:", model_name)
 
 
-
 ## Optional plotting
+RANDOM_SEED = 42
 PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,
     "reference_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": False,
+    "random_sample_overview": True,
     "normalized_data_inspection": False,
 }
 
@@ -125,6 +131,7 @@ PLOT_CONFIG = {
         "channel_idx": 0,
     },
     "random_sample_overview": {
+        "classes": ("LOW",), # "LOW", "TARGET", "HIGH"
         "n_samples": 30,
         "ncols": 6,
     },
@@ -149,7 +156,7 @@ if PLOT_OPTIONS["classification_examples"]:
     )
 
 if PLOT_OPTIONS["reference_samples"]:
-    viewing.plot_reference_samples(
+    viewing.plot_certain_samples(
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
         x_trainval=X_trainval,
@@ -177,6 +184,8 @@ if PLOT_OPTIONS["random_sample_overview"]:
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
         original_filtered_dict=original_filtered_dict,
+        original_envelope_dict=original_envelope_dict,
+        original_residual_dict=original_residual_dict,
         central_diff_dict=central_diff_dict,
         central_diff_filtered_dict=central_diff_filtered_dict,
         second_diff_dict=second_diff_dict,

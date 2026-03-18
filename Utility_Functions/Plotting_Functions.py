@@ -103,6 +103,7 @@ def plot_class_samples_vertical(
 def plot_random_class_samples_subplots(
     data_dict,
     class_order=("LOW", "TARGET", "HIGH"),
+    selected_classes=None,
     n_samples=6,
     ncols=3,
     title_prefix="Random Samples",
@@ -116,9 +117,17 @@ def plot_random_class_samples_subplots(
         raise ValueError(f"ncols must be >= 1, got {ncols}")
 
     rng = np.random.default_rng(random_seed)
-    selected_classes = _pick_classes(data_dict, class_order, len(class_order))
+    if selected_classes is None:
+        classes_to_plot = _pick_classes(data_dict, class_order, len(class_order))
+    else:
+        if isinstance(selected_classes, str):
+            selected_classes = (selected_classes,)
+        classes_to_plot = [cls for cls in selected_classes if cls in data_dict]
+        missing_classes = [cls for cls in selected_classes if cls not in data_dict]
+        if missing_classes:
+            raise ValueError(f"selected_classes contains unknown classes: {missing_classes}")
 
-    for cls in selected_classes:
+    for cls in classes_to_plot:
         class_df = data_dict[cls]
         if len(class_df) == 0:
             continue
