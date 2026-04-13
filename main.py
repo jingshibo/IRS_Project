@@ -20,7 +20,7 @@ sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segment
 
 
 ## Preprocessing
-# Hampel filtering, removing outliers (before downsampling, which can hide or distort spikes)
+# Hampel filtering, removing outliers, followed by a sqrt transformation to supress large values
 sliced_filtered_dict = Preprocessing.apply_hampel_filter_dict(sliced_dict, radius=5, n_sigmas=3.0, transform="sqrt")
 # Smooth Original signals with Savitzky-Golay filter (before downsampling, which can cause aliasing).
 original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=31, polyorder=3, deriv=0)
@@ -34,6 +34,10 @@ central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff
 second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
 second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=201, polyorder=3, deriv=0)
+# rolling variance of the original filtered signal
+rolling_variance_dict = Preprocessing.compute_rolling_variance_dict(original_filtered_dict, window_size=31)
+# rolling energy of the derivative signal
+derivative_energy_dict = Preprocessing.compute_derivative_energy_dict(central_diff_filtered_dict, window_size=31)
 # envelope Original signals with Savitzky-Golay filter (for residual calculation).
 original_envelope_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=201, polyorder=3, deriv=0)
 # calculate the residual of the original signal (separating coarse and fine information)
@@ -48,10 +52,12 @@ value_type_dicts = {
     "original": original_filtered_dict,
     "first_diff_filtered": central_diff_filtered_dict,
     "second_diff_filtered": second_diff_filtered_dict,
+    "rolling_variance": rolling_variance_dict,
+    "derivative_energy": derivative_energy_dict,
     "residual": original_residual_dict
 }
-selected_value_types = ["original", "first_diff_filtered", "second_diff_filtered",
-                        "residual"]  # e.g. ("original", "first_diff_filtered", "second_diff_filtered", "residual")
+# e.g. ("original", "first_diff_filtered", "second_diff_filtered", "rolling_variance", "derivative_energy", "residual")
+selected_value_types = ["original", "first_diff_filtered", "second_diff_filtered"]
 
 x_all, y_all = Preprocessing.build_multi_channel_dataset(
     data_dict_map=value_type_dicts,
@@ -107,7 +113,7 @@ PLOT_OPTIONS = {
     "classification_examples": False,
     "reference_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": True,
+    "random_sample_overview": False,
     "normalized_data_inspection": False,
 }
 
@@ -175,6 +181,8 @@ if PLOT_OPTIONS["mean_std_overview"]:
         central_diff_filtered_dict=central_diff_filtered_dict,
         second_diff_dict=second_diff_dict,
         second_diff_filtered_dict=second_diff_filtered_dict,
+        rolling_variance_dict=rolling_variance_dict,
+        derivative_energy_dict=derivative_energy_dict,
     )
 
 if PLOT_OPTIONS["random_sample_overview"]:
@@ -190,6 +198,8 @@ if PLOT_OPTIONS["random_sample_overview"]:
         central_diff_filtered_dict=central_diff_filtered_dict,
         second_diff_dict=second_diff_dict,
         second_diff_filtered_dict=second_diff_filtered_dict,
+        rolling_variance_dict=rolling_variance_dict,
+        derivative_energy_dict=derivative_energy_dict,
         **PLOT_CONFIG["random_sample_overview"],
     )
 
@@ -200,7 +210,6 @@ if PLOT_OPTIONS["normalized_data_inspection"]:
         selected_value_types=selected_value_types,
         **PLOT_CONFIG["normalized_data_inspection"],
     )
-
 
 
 # Which value in each combination occurring the most
@@ -226,15 +235,16 @@ if RUN_GRID_SEARCH:
         "leaky_relu_alpha": [0.05],  # no obvious differece between the three
         "scheduler_factor": [0.7],  # 0.7 is much better than 0.5 and 0.3
     }
+
     # Two-tower models require exactly 2 channels. Current selected_value_types should match that.
     grid_out = Grid_Search.run_grid_search_three_models(
         cv_folds=cv_folds,
         search_space=grid_search_space,
-        model_names=("shared_backbone_2ch",),  # canonical options: "shared_backbone_2ch", "two_tower_late_fusion", "two_tower_mid_fusion_cnn", "tcn_classifier"
+        model_names=("shared_backbone_2ch",), # canonical options: "shared_backbone_2ch", "two_tower_late_fusion", "two_tower_mid_fusion_cnn", "tcn_classifier"
         class_order=class_order,
         epochs=100,
         patience=25,
-        tensorboard_log_dir_root=None,  # disabled
+        tensorboard_log_dir_root=None, # disabled
         verbose_train=False,
         print_progress=True,
     )
@@ -248,7 +258,6 @@ if RUN_GRID_SEARCH:
     print("Saved grid-search results:", saved_paths)
 
     # print output value summaries
-
     n_above_095 = sum(trial.mean_best_val_acc > 0.950 for trial in grid_out["valid_trials"])
     print(f"Number of valid grid-search results with mean_best_val_acc > 0.95: {n_above_095}")
     grid_top100_param_freq = Grid_Search.summarize_top_param_frequencies(
@@ -259,3 +268,4 @@ if RUN_GRID_SEARCH:
     print("Top-100 parameter frequency summary dict:", grid_top100_param_freq)
     Grid_Search.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
     print("Best grid-search trial:", grid_out["best_trial"])
+

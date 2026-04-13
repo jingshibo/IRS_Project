@@ -129,6 +129,8 @@ def plot_mean_std_overview(
     central_diff_filtered_dict,
     second_diff_dict,
     second_diff_filtered_dict,
+    rolling_variance_dict,
+    derivative_energy_dict,
 ):
     stats_to_plot = (
         (original_dict, "Class Mean-Std Curves", "Mean value", None),
@@ -147,6 +149,8 @@ def plot_mean_std_overview(
             "Second difference value",
             (-1, 1),
         ),
+        (rolling_variance_dict, "Rolling Variance Mean-Std Curves", "Rolling variance", None),
+        (derivative_energy_dict, "Derivative Energy Mean-Std Curves", "Derivative energy", None),
     )
 
     for data_dict, title, ylabel, ylim in stats_to_plot:
@@ -172,6 +176,8 @@ def plot_random_sample_overview(
     central_diff_filtered_dict,
     second_diff_dict,
     second_diff_filtered_dict,
+    rolling_variance_dict,
+    derivative_energy_dict,
     classes=None,
     n_samples=30,
     ncols=6,
@@ -186,6 +192,8 @@ def plot_random_sample_overview(
         (central_diff_filtered_dict, "Filtered Central Difference Signals"),
         (second_diff_dict, "Raw Second Difference Signals"),
         (second_diff_filtered_dict, "Filtered Second Difference Signals"),
+        (rolling_variance_dict, "Rolling Variance Signals"),
+        (derivative_energy_dict, "Derivative Energy Signals"),
     )
 
     for data_dict, title_prefix in datasets:

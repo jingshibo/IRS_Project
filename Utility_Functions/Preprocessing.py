@@ -56,6 +56,56 @@ def apply_savgol_filter_dict(data_dict, window_length=11, polyorder=3, deriv=0, 
     return filtered_dict
 
 
+def compute_rolling_variance(signal, window_size=51):
+    """Rolling variance using E[x^2] - (E[x])^2."""
+    signal = np.asarray(signal, dtype=float)
+    if signal.ndim != 1:
+        raise ValueError(f"signal must be 1D, got shape {signal.shape}")
+    if window_size < 1 or window_size % 2 == 0:
+        raise ValueError(f"window_size must be a positive odd integer, got {window_size}")
+
+    pad = window_size // 2
+    x_pad = np.pad(signal, (pad, pad), mode="reflect")
+    kernel = np.ones(window_size, dtype=float) / window_size
+    mean = np.convolve(x_pad, kernel, mode="valid")
+    mean_sq = np.convolve(x_pad ** 2, kernel, mode="valid")
+    return mean_sq - mean ** 2
+
+
+def compute_rolling_variance_dict(data_dict, window_size=51):
+    """Apply rolling variance row-wise to each DataFrame in a dict."""
+    out_dict = {}
+    for key, df in data_dict.items():
+        arr = df.to_numpy()
+        out = np.array([compute_rolling_variance(row, window_size) for row in arr])
+        out_dict[key] = pd.DataFrame(out, index=df.index, columns=df.columns)
+    return out_dict
+
+
+def compute_rolling_energy(signal, window_size=51):
+    """Rolling energy = mean of squared signal."""
+    signal = np.asarray(signal, dtype=float)
+    if signal.ndim != 1:
+        raise ValueError(f"signal must be 1D, got shape {signal.shape}")
+    if window_size < 1 or window_size % 2 == 0:
+        raise ValueError(f"window_size must be a positive odd integer, got {window_size}")
+
+    pad = window_size // 2
+    x_pad = np.pad(signal, (pad, pad), mode="reflect")
+    kernel = np.ones(window_size, dtype=float) / window_size
+    return np.convolve(x_pad ** 2, kernel, mode="valid")
+
+
+def compute_derivative_energy_dict(data_dict, window_size=51):
+    """Compute rolling energy on derivative signals."""
+    out_dict = {}
+    for key, df in data_dict.items():
+        arr = df.to_numpy()
+        out = np.array([compute_rolling_energy(row, window_size) for row in arr])
+        out_dict[key] = pd.DataFrame(out, index=df.index, columns=df.columns)
+    return out_dict
+
+
 def _resolve_hampel_radius(radius=5):
     if radius < 1:
         raise ValueError(f"radius must be >= 1, got {radius}")
