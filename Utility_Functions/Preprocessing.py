@@ -47,7 +47,8 @@ def apply_savgol_filter_dict(data_dict, window_length=11, polyorder=3, deriv=0, 
     filtered_dict = {}
     for key, data_df in data_dict.items():
         n_features = data_df.shape[1]
-        safe_window = window_length if n_features >= window_length else (n_features if n_features % 2 == 1 else n_features - 1)
+        safe_window = window_length if n_features >= window_length else (
+            n_features if n_features % 2 == 1 else n_features - 1)
         if safe_window > polyorder and safe_window >= 3:
             filtered_values = savgol_filter(data_df.values, window_length=safe_window, polyorder=polyorder, deriv=deriv, mode=mode)
             filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
@@ -112,34 +113,6 @@ def _resolve_hampel_radius(radius=5):
     return int(radius)
 
 
-def _hampel_filter_1d(signal, radius=5, n_sigmas=3.0, scale=1.4826):
-    """Replace outliers using a Hampel filter on a 1D signal."""
-    signal = np.asarray(signal, dtype=float)
-    if signal.ndim != 1:
-        raise ValueError(f"signal must be 1D, got shape {signal.shape}")
-    radius = _resolve_hampel_radius(radius=radius)
-
-    filtered = signal.copy()
-
-    for idx in range(signal.shape[0]):
-        start = max(0, idx - radius)
-        end = min(signal.shape[0], idx + radius + 1)
-        window = signal[start:end]
-        median = np.median(window)
-        mad = np.median(np.abs(window - median))
-        threshold = n_sigmas * scale * mad
-
-        if mad == 0:
-            if signal[idx] != median:
-                filtered[idx] = median
-            continue
-
-        if abs(signal[idx] - median) > threshold:
-            filtered[idx] = median
-
-    return filtered
-
-
 def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     """Apply a row-wise Hampel filter to a 2D array [n_samples, signal_length]."""
     values = np.asarray(values, dtype=float)
@@ -151,7 +124,8 @@ def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     windows = np.lib.stride_tricks.sliding_window_view(padded, 2 * radius + 1, axis=1)
 
     medians = np.median(windows, axis=-1)
-    mad = np.median(np.abs(windows - medians[..., np.newaxis]), axis=-1)
+    mad = np.median(np.abs(windows - medians[..., np.newaxis]),
+                    axis=-1)  ## Median Absolute Deviation, which calculates median for the second time
     thresholds = n_sigmas * scale * mad
 
     filtered = values.copy()
@@ -163,9 +137,32 @@ def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     return filtered
 
 
-def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0, transform="none"):
-    """Apply a row-wise Hampel filter to each class DataFrame in a dict."""
+def fast_spike_filter_dict(
+        data_dict,
+        radius=3,
+        transform="none",
+        method="hampel",
+        n_sigmas=3.0,
+        k=5.0,
+        min_threshold=1000.0,
+):
+    """Apply a row-wise spike filter to each class DataFrame in a dict.
+
+    Args:
+        data_dict: Mapping of class label to DataFrame.
+        radius: Window radius used by both filter methods for median replacement.
+        n_sigmas: Hampel threshold multiplier when method="hampel".
+        transform: Optional post-filter transform in {"none", "log", "sqrt"}.
+        method: Spike-filter backend in {"hampel", "fast"}.
+        k: Relative threshold multiplier when method="fast".
+        min_threshold: Absolute floor for spike detection when method="fast".
+    """
     radius = _resolve_hampel_radius(radius=radius)
+    method = str(method).lower()
+    valid_methods = {"hampel", "fast"}
+    if method not in valid_methods:
+        raise ValueError(f"method must be one of {sorted(valid_methods)}, got {method!r}")
+
     transform = str(transform).lower()
     valid_transforms = {"none", "log", "sqrt"}
     if transform not in valid_transforms:
@@ -174,7 +171,19 @@ def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0, transform="none"
     filtered_dict = {}
     for key, data_df in data_dict.items():
         values = np.asarray(data_df.values, dtype=float)
-        filtered_values = apply_hampel_filter_array(values, radius=radius, n_sigmas=n_sigmas)
+        if method == "hampel":
+            filtered_values = apply_hampel_filter_array(
+                values,
+                radius=radius,
+                n_sigmas=n_sigmas,
+            )
+        else:
+            filtered_values = fast_spike_filter(
+                values,
+                radius=radius,
+                k=k,
+                min_threshold=min_threshold,
+            )
 
         if transform == "log":
             if np.any(filtered_values < 0):
@@ -193,6 +202,65 @@ def apply_hampel_filter_dict(data_dict, radius=5, n_sigmas=3.0, transform="none"
 
         filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
     return filtered_dict
+
+
+def fast_spike_filter(
+        values,
+        radius=3,
+        k=5.0,
+        min_threshold=1000.0,
+):
+    """Replace isolated row-wise spikes with a local median.
+
+    Accepts a 1D signal or a 2D array of shape [n_samples, n_features].
+    Detection compares each point against the average of its immediate
+    neighbors. Suspect points are replaced by the median in a local window.
+    """
+    values = np.asarray(values, dtype=float)
+    original_ndim = values.ndim
+
+    if values.ndim == 1:
+        values = values[np.newaxis, :]
+    elif values.ndim != 2:
+        raise ValueError(f"values must be 1D or 2D, got shape {values.shape}")
+
+    if radius < 1 or int(radius) != radius:
+        raise ValueError(f"radius must be a positive integer, got {radius}")
+    if k < 0:
+        raise ValueError(f"k must be non-negative, got {k}")
+    if min_threshold < 0:
+        raise ValueError(
+            f"min_threshold must be non-negative, got {min_threshold}"
+        )
+    if np.isnan(values).any():
+        raise ValueError("fast_spike_filter does not support NaN values")
+
+    radius = int(radius)
+    n_features = values.shape[1]
+    if n_features < 3:
+        return values[0] if original_ndim == 1 else values.copy()
+
+    left = values[:, :-2]
+    center = values[:, 1:-1]
+    right = values[:, 2:]
+    local_mean = 0.5 * (left + right)
+
+    threshold = np.maximum(min_threshold, k * np.abs(local_mean))
+    deviations = np.abs(center - local_mean)
+
+    suspect_mask = np.zeros_like(values, dtype=bool)
+    suspect_mask[:, 1:-1] = deviations > threshold
+
+    padded = np.pad(values, ((0, 0), (radius, radius)), mode="reflect")
+    windows = np.lib.stride_tricks.sliding_window_view(
+        padded, 2 * radius + 1, axis=1
+    )
+    medians = np.median(windows, axis=-1)
+
+    filtered = values.copy()
+    filtered[suspect_mask] = medians[suspect_mask]
+
+    return filtered[0] if original_ndim == 1 else filtered
 
 
 def build_two_channel_dataset(original_dict, diff_filtered_dict):
@@ -290,8 +358,11 @@ def slice_dict_signal_segments(data_dict, segments=((000, 1000), (1800, 3500))):
     """
     sliced_dict = {}
     for key, df in data_dict.items():
-        values = df.values
-        values_sliced = slice_and_concat_signal_segments(values[:, np.newaxis, :], segments=segments)[:, 0, :]
+        values = df.to_numpy(dtype=np.float32, copy=True)
+        values_sliced = slice_and_concat_signal_segments(
+            values[:, np.newaxis, :],
+            segments=segments,
+        )[:, 0, :].astype(np.float32, copy=False)
         # Keep original column labels when possible by concatenating selected column names.
         selected_cols = []
         n_features = df.shape[1]
@@ -450,7 +521,8 @@ def find_cv_fold_channel_threshold_hits(cv_folds, channel_idx=0, threshold=15.0)
             global_indices = np.asarray(fold_data[idx_key])
 
             if channel_idx < 0 or channel_idx >= x_split.shape[1]:
-                raise IndexError(f"channel_idx {channel_idx} is out of range for input with {x_split.shape[1]} channels")
+                raise IndexError(
+                    f"channel_idx {channel_idx} is out of range for input with {x_split.shape[1]} channels")
 
             channel_values = x_split[:, channel_idx, :]
 

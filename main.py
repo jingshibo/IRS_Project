@@ -21,19 +21,20 @@ sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segment
 
 ## Preprocessing
 # Hampel filtering, removing outliers, followed by a sqrt transformation to supress large values
-sliced_filtered_dict = Preprocessing.apply_hampel_filter_dict(sliced_dict, radius=5, n_sigmas=3.0, transform="sqrt")
+sliced_filtered_dict = Preprocessing.fast_spike_filter_dict(sliced_dict, radius=3, transform="sqrt", method="fast",
+                                                            n_sigmas=3.0, k=4.0, min_threshold=1000.0)
 # Smooth Original signals with Savitzky-Golay filter (before downsampling, which can cause aliasing).
-original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=31, polyorder=3, deriv=0)
+original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=31, polyorder=3, deriv=0, mode="mirror")
 # Downsample after filtering, before SG derivative (performing on clean signal to avoid amplified noise due to derivative).
 original_filtered_dict = Preprocessing.downsample_dict_signals(original_filtered_dict, step=1, offset=0)
 # central difference calculate of each sample
 central_diff_dict = Preprocessing.compute_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
-central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff_dict, window_length=201, polyorder=3, deriv=0)
+central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff_dict, window_length=201, polyorder=3, deriv=0, mode="mirror")
 # second central difference calculate of each sample
 second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise).
-second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=201, polyorder=3, deriv=0)
+second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=201, polyorder=3, deriv=0, mode="mirror")
 # rolling variance of the original filtered signal
 rolling_variance_dict = Preprocessing.compute_rolling_variance_dict(original_filtered_dict, window_size=31)
 # rolling energy of the derivative signal
@@ -111,9 +112,9 @@ RANDOM_SEED = 42
 PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,
-    "reference_samples": False,
+    "reference_samples": True,
     "mean_std_overview": False,
-    "random_sample_overview": False,
+    "random_sample_overview": True,
     "normalized_data_inspection": False,
 }
 
