@@ -51,6 +51,7 @@ def plot_classification_examples(
 
 
 def plot_certain_samples(
+    categorized_dict,
     sliced_dict,
     sliced_filtered_dict,
     x_trainval,
@@ -61,46 +62,33 @@ def plot_certain_samples(
     channel_idx=0,
     train_out=None,
 ):
-    x_all_original_raw, y_all_original_raw = Preprocessing.build_multi_channel_dataset(
-        data_dict_map={"original": sliced_dict},
-        selected_types=("original",),
-    )
-    x_trainval_original_raw, _, y_trainval_original_raw, _ = Preprocessing.split_holdout(
-        x_all_original_raw,
-        y_all_original_raw,
-        test_size=0.15,
-        random_seed=42,
+    reference_datasets = (
+        (categorized_dict, "Initial raw signal before slicing"),
+        (sliced_dict, "Original raw signal before filtering"),
+        (sliced_filtered_dict, "Original raw signal after outlier filtering"),
     )
 
-    x_all_original_median, y_all_original_median = Preprocessing.build_multi_channel_dataset(
-        data_dict_map={"original": sliced_filtered_dict},
-        selected_types=("original",),
-    )
-    x_trainval_original_median, _, y_trainval_original_median, _ = Preprocessing.split_holdout(
-        x_all_original_median,
-        y_all_original_median,
-        test_size=0.15,
-        random_seed=42,
-    )
+    for reference_dict, title_prefix in reference_datasets:
+        x_all_reference, y_all_reference = Preprocessing.build_multi_channel_dataset(
+            data_dict_map={"original": reference_dict},
+            selected_types=("original",),
+        )
+        x_trainval_reference, _, y_trainval_reference, _ = Preprocessing.split_holdout(
+            x_all_reference,
+            y_all_reference,
+            test_size=0.15,
+            random_seed=42,
+        )
+        Plotting_Functions.plot_reference_sample_from_fold(
+            x_reference=x_trainval_reference,
+            y_reference=y_trainval_reference,
+            cv_folds=cv_folds,
+            fold_id=fold_id,
+            sample_idx=sample_idx,
+            channel_idx=channel_idx,
+            title_prefix=title_prefix,
+        )
 
-    Plotting_Functions.plot_reference_sample_from_fold(
-        x_reference=x_trainval_original_raw,
-        y_reference=y_trainval_original_raw,
-        cv_folds=cv_folds,
-        fold_id=fold_id,
-        sample_idx=sample_idx,
-        channel_idx=channel_idx,
-        title_prefix="Original raw signal before filtering",
-    )
-    Plotting_Functions.plot_reference_sample_from_fold(
-        x_reference=x_trainval_original_median,
-        y_reference=y_trainval_original_median,
-        cv_folds=cv_folds,
-        fold_id=fold_id,
-        sample_idx=sample_idx,
-        channel_idx=channel_idx,
-        title_prefix="Original raw signal after median filtering",
-    )
     Plotting_Functions.plot_reference_sample_from_fold(
         x_reference=x_trainval,
         y_reference=y_trainval,
@@ -167,6 +155,7 @@ def plot_mean_std_overview(
 def plot_random_sample_overview(
     class_order,
     random_seed,
+    categorized_dict,
     sliced_dict,
     sliced_filtered_dict,
     original_filtered_dict,
@@ -179,21 +168,22 @@ def plot_random_sample_overview(
     rolling_variance_dict,
     derivative_energy_dict,
     classes=None,
-    n_samples=30,
-    ncols=6,
+    n_samples=20,
+    ncols=5,
 ):
     datasets = (
+        (categorized_dict, "Initial Raw Signals Before Slicing"),
         (sliced_dict, "Raw Signals Before Filtering"),
         (sliced_filtered_dict, "Raw Signals After Hampel Filtering"),
         (original_filtered_dict, "Raw Signals After SG Filtering"),
-        (original_envelope_dict, "Original Envelope Signals"),
-        (original_residual_dict, "Original Residual Signals"),
+        # (original_envelope_dict, "Original Envelope Signals"),
+        # (original_residual_dict, "Original Residual Signals"),
         (central_diff_dict, "Raw Central Difference Signals"),
         (central_diff_filtered_dict, "Filtered Central Difference Signals"),
         (second_diff_dict, "Raw Second Difference Signals"),
         (second_diff_filtered_dict, "Filtered Second Difference Signals"),
-        (rolling_variance_dict, "Rolling Variance Signals"),
-        (derivative_energy_dict, "Derivative Energy Signals"),
+        # (rolling_variance_dict, "Rolling Variance Signals"),
+        # (derivative_energy_dict, "Derivative Energy Signals"),
     )
 
     for data_dict, title_prefix in datasets:

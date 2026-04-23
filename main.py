@@ -13,34 +13,35 @@ df = pd.read_excel(excel_path, sheet_name=0)  # or sheet_name="Sheet1"
 label_col = df.columns[0]
 class_order = ("LOW", "TARGET", "HIGH")
 categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df.groupby(label_col)}
+
+
+## Preprocessing
 # slice segment
 signal_segments = ((000, 1000), (1800, 3500)) # Slice raw signals before preprocessing signal_segments = ((000, 4000),).
 # signal_segments = ((0, 4000),)
 sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segments=signal_segments)
-
-
-## Preprocessing
 # Hampel filtering, removing outliers, followed by a sqrt transformation to supress large values
 sliced_filtered_dict = Preprocessing.fast_spike_filter_dict(sliced_dict, radius=3, transform="sqrt", method="fast",
                                                             n_sigmas=3.0, k=4.0, min_threshold=1000.0)
 # Smooth Original signals with Savitzky-Golay filter (before downsampling, which can cause aliasing). window_length default:31
 original_filtered_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=31, polyorder=3, deriv=0, mode="mirror")
 # Downsample after filtering, before SG derivative (performing on clean signal to avoid amplified noise due to derivative).
-original_filtered_dict = Preprocessing.downsample_dict_signals(original_filtered_dict, step=1, offset=0)
+original_filtered_dict = Preprocessing.downsample_dict_signals(original_filtered_dict, step=5, offset=0)  ## step = 4/5/6 is the best trade-off, max 10 (which requires model structure change). 20 is too large to keep the shape and details
 # central difference calculate of each sample
 central_diff_dict = Preprocessing.compute_central_diff_dict(original_filtered_dict)
 # Smooth central-difference signals with Savitzky-Golay filter (row-wise). window_length default:201
 central_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(central_diff_dict, window_length=31, polyorder=3, deriv=0, mode="mirror")
-# second second difference calculate of each sample
+# Second difference calculate of each sample
 second_diff_dict = Preprocessing.compute_second_central_diff_dict(original_filtered_dict)
-# Smooth second-difference signals with Savitzky-Golay filter (row-wise). window_length default:201
+# Smooth second-difference signals with Savitzky-Golay filter (row-wise). window_len3gth default:201
 second_diff_filtered_dict = Preprocessing.apply_savgol_filter_dict(second_diff_dict, window_length=31, polyorder=3, deriv=0, mode="mirror")
+
 # rolling variance of the original filtered signal
 rolling_variance_dict = Preprocessing.compute_rolling_variance_dict(original_filtered_dict, window_size=31)
 # rolling energy of the derivative signal
 derivative_energy_dict = Preprocessing.compute_derivative_energy_dict(central_diff_filtered_dict, window_size=31)
-# envelope Original signals with Savitzky-Golay filter (for residual calculation).
-original_envelope_dict = Preprocessing.apply_savgol_filter_dict(sliced_filtered_dict, window_length=201, polyorder=3, deriv=0)
+# envelope Original signals with Savitzky-Golay filter (for residual calculation)
+original_envelope_dict = Preprocessing.apply_savgol_filter_dict(original_filtered_dict, window_length=31, polyorder=3, deriv=0)
 # calculate the residual of the original signal (separating coarse and fine information)
 original_residual_dict = Preprocessing.calculate_residual_dict(original_filtered_dict, original_envelope_dict)
 
@@ -112,9 +113,9 @@ RANDOM_SEED = 42
 PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,
-    "reference_samples": True,
+    "certain_samples": True,
     "mean_std_overview": False,
-    "random_sample_overview": True,
+    "random_sample_overview": False,
     "normalized_data_inspection": False,
 }
 
@@ -132,7 +133,7 @@ PLOT_CONFIG = {
         "top_k": 10,
         "channel_idx": 0,
     },
-    "reference_samples": {
+    "certain_samples": {
         "fold_id": 4,
         "sample_idx": 136,
         "channel_idx": 0,
@@ -162,15 +163,16 @@ if PLOT_OPTIONS["classification_examples"]:
         **PLOT_CONFIG["classification_examples"],
     )
 
-if PLOT_OPTIONS["reference_samples"]:
+if PLOT_OPTIONS["certain_samples"]:
     viewing.plot_certain_samples(
+        categorized_dict=categorized_dict,
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
         x_trainval=X_trainval,
         y_trainval=y_trainval,
         cv_folds=cv_folds,
         train_out=train_out,
-        **PLOT_CONFIG["reference_samples"],
+        **PLOT_CONFIG["certain_samples"],
     )
 
 if PLOT_OPTIONS["mean_std_overview"]:
@@ -190,6 +192,7 @@ if PLOT_OPTIONS["random_sample_overview"]:
     viewing.plot_random_sample_overview(
         class_order=class_order,
         random_seed=RANDOM_SEED,
+        categorized_dict=categorized_dict,
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
         original_filtered_dict=original_filtered_dict,
@@ -269,4 +272,3 @@ if RUN_GRID_SEARCH:
     print("Top-100 parameter frequency summary dict:", grid_top100_param_freq)
     Grid_Search.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
     print("Best grid-search trial:", grid_out["best_trial"])
-

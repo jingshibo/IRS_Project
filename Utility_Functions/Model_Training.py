@@ -550,7 +550,7 @@ def print_model_summary(
 
 if __name__ == "__main__":
     print_model_summary(
-        signal_length=2700,
+        signal_length=450,
         batch_size=64,
         in_channels=3,
         num_classes=3,
