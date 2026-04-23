@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 runs/
-.idea/shelf
-.ai
+.idea/
+.ai/
