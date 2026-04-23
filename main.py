@@ -18,7 +18,7 @@ categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) 
 ## Preprocessing
 # slice segment
 signal_segments = ((000, 1000), (1800, 3500)) # Slice raw signals before preprocessing signal_segments = ((000, 4000),).
-# signal_segments = ((0, 4000),)
+# signal_segments = ((0, 4000),) 
 sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segments=signal_segments)
 # Hampel filtering, removing outliers, followed by a sqrt transformation to supress large values
 sliced_filtered_dict = Preprocessing.fast_spike_filter_dict(sliced_dict, radius=3, transform="sqrt", method="fast",
