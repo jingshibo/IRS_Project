@@ -458,9 +458,20 @@ def clip_normalized_fold_channels(x_train, x_val, max_value=15.0):
     return np.clip(x_train, a_min=None, a_max=max_value), np.clip(x_val, a_min=None, a_max=max_value)
 
 
-def build_normalized_cv_folds(x_trainval, y_trainval, n_splits=5, random_seed=42, clip_max_value=None):
+def build_normalized_cv_folds(
+    x_trainval,
+    y_trainval,
+    n_splits=5,
+    random_seed=42,
+    clip_max_value=None,
+    cv_indices=None,
+):
     folds = []
-    cv_indices = build_stratified_cv_indices(y_trainval, n_splits=n_splits, random_seed=random_seed)
+    cv_indices = (
+        build_stratified_cv_indices(y_trainval, n_splits=n_splits, random_seed=random_seed)
+        if cv_indices is None
+        else list(cv_indices)
+    )
 
     for fold_id, (train_idx, val_idx) in enumerate(cv_indices):
         x_train = x_trainval[train_idx]

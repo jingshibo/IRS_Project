@@ -1,12 +1,14 @@
 import copy
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, TypedDict
-from torch.utils.tensorboard import SummaryWriter
+
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
-from Utility_Functions.Model_Structure import (
+from torch.utils.tensorboard import SummaryWriter
+
+from Raw_Data_Implementation.Model_Structure import (
     DualBranchFusionCNNClassifier,
     DualBranchOneDCNNClassifier,
     MultiScaleOneDCNNClassifier,
@@ -79,7 +81,7 @@ class MicrowaveSignalDataset(Dataset):
         return x, self.y[idx]
 
 
-@dataclass  # Function similar to C structure: A lightweight object designed primarily for storing and access various types of data.
+@dataclass
 class FoldResult:
     """Container for one fold's best model and validation outputs."""
 
@@ -109,7 +111,7 @@ class TrainOutput(TypedDict):
     overall_confusion_recall: np.ndarray
 
 
-@dataclass  # Function similar to C structure: A lightweight object designed primarily for storing and access various types of data.
+@dataclass
 class TrainerConfig:
     """Configuration for cross-validation training."""
 

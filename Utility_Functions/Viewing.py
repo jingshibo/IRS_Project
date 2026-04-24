@@ -176,14 +176,10 @@ def plot_random_sample_overview(
         (sliced_dict, "Raw Signals Before Filtering"),
         (sliced_filtered_dict, "Raw Signals After Hampel Filtering"),
         (original_filtered_dict, "Raw Signals After SG Filtering"),
-        # (original_envelope_dict, "Original Envelope Signals"),
-        # (original_residual_dict, "Original Residual Signals"),
         (central_diff_dict, "Raw Central Difference Signals"),
         (central_diff_filtered_dict, "Filtered Central Difference Signals"),
         (second_diff_dict, "Raw Second Difference Signals"),
         (second_diff_filtered_dict, "Filtered Second Difference Signals"),
-        # (rolling_variance_dict, "Rolling Variance Signals"),
-        # (derivative_energy_dict, "Derivative Energy Signals"),
     )
 
     for data_dict, title_prefix in datasets:
