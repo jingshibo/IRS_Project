@@ -3,9 +3,9 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 
 
-_EPS = 1e-12
+_EPS = 1e-12 #  small constant to prevent division by zero in skewness, kurtosis, and spectral features
 
-
+##  safe division that returns 0 when denominator is close to zero
 def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
     numerator = np.asarray(numerator, dtype=np.float64)
     denominator = np.asarray(denominator, dtype=np.float64)
@@ -16,7 +16,7 @@ def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
         where=np.abs(denominator) > _EPS,
     )
 
-
+##  validate that x has shape [N, C, L] and signal length >= 2
 def _validate_signal_dataset(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
     if x.ndim != 3:
@@ -25,7 +25,7 @@ def _validate_signal_dataset(x: np.ndarray) -> np.ndarray:
         raise ValueError(f"Signal length must be >= 2, got {x.shape[2]}")
     return x
 
-
+##  extract features from a single channel of shape [N, L], returning feature block of shape [N, F] and list of feature names
 def _channel_feature_block(channel_values: np.ndarray, channel_name: str) -> Tuple[np.ndarray, List[str]]:
     channel_values = np.asarray(channel_values, dtype=np.float64)
     if channel_values.ndim != 2:
@@ -126,7 +126,7 @@ def _channel_feature_block(channel_values: np.ndarray, channel_name: str) -> Tup
     feature_block = np.column_stack(feature_arrays).astype(np.float32, copy=False)
     return feature_block, feature_names
 
-
+##  main function to extract feature matrix of shape [N, F] and list of feature names from signal tensor of shape [N, C, L]
 def extract_feature_matrix(
     x: np.ndarray,
     channel_names: Optional[Sequence[str]] = None,

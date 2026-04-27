@@ -3,7 +3,7 @@ from sklearn.preprocessing import StandardScaler
 
 from Utility_Functions.Preprocessing import build_stratified_cv_indices
 
-
+##  standardize a tabular feature matrix [N, F] using train-only statistics
 def normalize_fold_feature_matrix(x_train, x_val):
     """Standardize a tabular feature matrix [N, F] using train-only statistics."""
     x_train = np.asarray(x_train, dtype=np.float32)
@@ -18,7 +18,7 @@ def normalize_fold_feature_matrix(x_train, x_val):
     x_val_norm = scaler.transform(x_val)
     return x_train_norm.astype(np.float32, copy=False), x_val_norm.astype(np.float32, copy=False), scaler
 
-
+##  build leakage-safe normalized CV folds for a feature matrix [N, F]
 def build_normalized_feature_cv_folds(
     x_trainval,
     y_trainval,

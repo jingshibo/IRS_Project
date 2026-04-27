@@ -1,18 +1,9 @@
-import os
-import sys
-
 import pandas as pd
-
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-
 from Feature_Implementation import Feature_Extraction, Feature_Preprocessing, Feature_Training
 from Utility_Functions import Preprocessing, Viewing
 
 
+## load data
 excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 df = pd.read_excel(excel_path, sheet_name=0)
 label_col = df.columns[0]
@@ -20,6 +11,7 @@ class_order = ("LOW", "TARGET", "HIGH")
 categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df.groupby(label_col)}
 
 
+## preprocessing,
 signal_segments = ((0, 1000), (1800, 3500))
 sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segments=signal_segments)
 sliced_filtered_dict = Preprocessing.fast_spike_filter_dict(
@@ -62,6 +54,7 @@ original_envelope_dict = Preprocessing.apply_savgol_filter_dict(original_filtere
 original_residual_dict = Preprocessing.calculate_residual_dict(original_filtered_dict, original_envelope_dict)
 
 
+## feature extraction
 RANDOM_SEED = 42
 value_type_dicts = {
     "original": original_filtered_dict,
@@ -99,6 +92,8 @@ print("Signal holdout shape:", X_test_signal.shape)
 print("Feature holdout shape:", X_test_features.shape)
 print("Extracted feature count:", len(feature_names))
 
+
+## create dataset
 cv_indices = Preprocessing.build_stratified_cv_indices(
     y_trainval,
     n_splits=5,
@@ -120,6 +115,8 @@ feature_cv_folds = Feature_Preprocessing.build_normalized_feature_cv_folds(
     cv_indices=cv_indices,
 )
 
+
+## model training
 model_name = "feature_mlp_classifier"
 train_out = Feature_Training.train_feature_mlp_cv(
     cv_folds=feature_cv_folds,
@@ -137,6 +134,7 @@ print("Class index mapping:", train_out["label_to_idx"])
 print("Model name:", model_name)
 
 
+## plotting
 PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,

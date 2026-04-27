@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from Feature_Implementation.Feature_Model_Structure import FeatureMLPClassifier
 
-
+##  dataset for tabular feature vectors [N, F] and encoded class labels
 class FeatureDataset(Dataset):
     """Dataset for tabular feature vectors [N, F] and encoded class labels."""
 
@@ -27,7 +27,7 @@ class FeatureDataset(Dataset):
     def __getitem__(self, idx: int):
         return self.x[idx], self.y[idx]
 
-
+##  result of training one CV fold, including best model state, best val acc, training history, and confusion matrices
 @dataclass
 class FeatureFoldResult:
     fold: int
@@ -43,7 +43,7 @@ class FeatureFoldResult:
     confusion_count: np.ndarray
     confusion_recall: np.ndarray
 
-
+##  overall training result across all CV folds, including label mappings, fold results, mean val acc, and overall confusion matrices
 class FeatureTrainOutput(TypedDict):
     label_to_idx: Dict[str, int]
     idx_to_label: Dict[int, str]
