@@ -1,7 +1,11 @@
 import pandas as pd
+import os
+import sys
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from Feature_Implementation import Feature_Extraction, Feature_Preprocessing, Feature_Training
 from Utility_Functions import Preprocessing, Viewing
-
 
 ## load data
 excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
@@ -11,7 +15,7 @@ class_order = ("LOW", "TARGET", "HIGH")
 categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df.groupby(label_col)}
 
 
-## preprocessing,
+## preprocessing
 signal_segments = ((0, 1000), (1800, 3500))
 sliced_dict = Preprocessing.slice_dict_signal_segments(categorized_dict, segments=signal_segments)
 sliced_filtered_dict = Preprocessing.fast_spike_filter_dict(
