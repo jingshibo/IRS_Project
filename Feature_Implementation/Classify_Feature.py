@@ -1,10 +1,12 @@
+# import os
+# import sys
+# PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# if PROJECT_ROOT not in sys.path:
+#     sys.path.insert(0, PROJECT_ROOT)
 import pandas as pd
-import os
-import sys
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-from Feature_Implementation import Feature_Extraction, Feature_Preprocessing, Feature_Training
+from Feature_Implementation import Feature_Preprocessing
+from Feature_Implementation.Models import Feature_Training
+from Feature_Implementation.Functions import Feature_Extraction
 from Utility_Functions import Preprocessing, Viewing
 
 ## load data
@@ -82,6 +84,7 @@ X_trainval_signal, X_test_signal, y_trainval, y_test = Preprocessing.split_holdo
     random_seed=RANDOM_SEED,
 )
 
+
 X_trainval_features, feature_names = Feature_Extraction.extract_feature_matrix(
     X_trainval_signal,
     channel_names=selected_value_types,
@@ -142,9 +145,9 @@ print("Model name:", model_name)
 PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,
-    "certain_samples": True,
+    "certain_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": False,
+    "random_sample_overview": True,
     "normalized_data_inspection": False,
 }
 

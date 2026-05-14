@@ -1,12 +1,13 @@
+# import os
+# import sys
+# PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# if PROJECT_ROOT not in sys.path:
+#     sys.path.insert(0, PROJECT_ROOT)
 import importlib
 from datetime import datetime
 import pandas as pd
-import os
-import sys
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-from Raw_Data_Implementation import Grid_Search, Model_Training, Model_Structure
+from Raw_Data_Implementation import Grid_Search
+from Raw_Data_Implementation.Models import Model_Training, Model_Structure
 from Utility_Functions import Preprocessing, Viewing
 
 
@@ -121,7 +122,7 @@ print("Model name:", model_name)
 plot_options = {
     "threshold_hits": False,
     "classification_examples": False,
-    "certain_samples": True,
+    "certain_samples": False,
     "mean_std_overview": False,
     "random_sample_overview": False,
     "normalized_data_inspection": False,
@@ -147,7 +148,7 @@ plot_config = {
         "channel_idx": 0,
     },
     "random_sample_overview": {
-        "classes": ("LOW",),
+        "classes": ("TARGET",),
         "n_samples": 30,
         "ncols": 6,
     },

@@ -4,6 +4,8 @@ from scipy.signal import savgol_filter
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
+FLOAT_DTYPE = np.float32
+
 
 def compute_mean_std_stats(grouped_dict):
     stats = {}
@@ -18,22 +20,23 @@ def compute_mean_std_stats(grouped_dict):
 def compute_central_diff_dict(grouped_dict):
     central_diff_dict = {}
     for key, group_df in grouped_dict.items():
-        cd = group_df.copy()
-        cd.iloc[:, 1:-1] = (group_df.iloc[:, 2:].values - group_df.iloc[:, :-2].values) / 2
+        values = group_df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
+        cd = values.copy()
+        cd[:, 1:-1] = (values[:, 2:] - values[:, :-2]) / FLOAT_DTYPE(2.0)
         # handle edges (simple approximation)
-        cd.iloc[:, 0] = group_df.iloc[:, 1] - group_df.iloc[:, 0]
-        cd.iloc[:, -1] = group_df.iloc[:, -1] - group_df.iloc[:, -2]
-        central_diff_dict[key] = cd
+        cd[:, 0] = values[:, 1] - values[:, 0]
+        cd[:, -1] = values[:, -1] - values[:, -2]
+        central_diff_dict[key] = pd.DataFrame(cd, columns=group_df.columns, index=group_df.index)
     return central_diff_dict
 
 
 def compute_second_central_diff_dict(grouped_dict):
     second_diff_dict = {}
     for key, df in grouped_dict.items():
-        values = df.values
+        values = df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
         if values.shape[1] < 3:
             raise ValueError(f"Need at least 3 features for second difference, got {values.shape[1]}")
-        second_diff = np.zeros_like(values, dtype=float)
+        second_diff = np.zeros_like(values, dtype=FLOAT_DTYPE)
         # central second difference
         second_diff[:, 1:-1] = (values[:, 2:] - 2 * values[:, 1:-1] + values[:, :-2])
         # handle edges (simple approximation)
@@ -50,16 +53,26 @@ def apply_savgol_filter_dict(data_dict, window_length=11, polyorder=3, deriv=0, 
         safe_window = window_length if n_features >= window_length else (
             n_features if n_features % 2 == 1 else n_features - 1)
         if safe_window > polyorder and safe_window >= 3:
-            filtered_values = savgol_filter(data_df.values, window_length=safe_window, polyorder=polyorder, deriv=deriv, mode=mode)
+            filtered_values = savgol_filter(
+                data_df.to_numpy(dtype=FLOAT_DTYPE, copy=False),
+                window_length=safe_window,
+                polyorder=polyorder,
+                deriv=deriv,
+                mode=mode,
+            ).astype(FLOAT_DTYPE, copy=False)
             filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
         else:
-            filtered_dict[key] = data_df.copy()
+            filtered_dict[key] = pd.DataFrame(
+                data_df.to_numpy(dtype=FLOAT_DTYPE, copy=True),
+                columns=data_df.columns,
+                index=data_df.index,
+            )
     return filtered_dict
 
 
 def compute_rolling_variance(signal, window_size=51):
     """Rolling variance using E[x^2] - (E[x])^2."""
-    signal = np.asarray(signal, dtype=float)
+    signal = np.asarray(signal, dtype=FLOAT_DTYPE)
     if signal.ndim != 1:
         raise ValueError(f"signal must be 1D, got shape {signal.shape}")
     if window_size < 1 or window_size % 2 == 0:
@@ -67,25 +80,25 @@ def compute_rolling_variance(signal, window_size=51):
 
     pad = window_size // 2
     x_pad = np.pad(signal, (pad, pad), mode="reflect")
-    kernel = np.ones(window_size, dtype=float) / window_size
+    kernel = np.ones(window_size, dtype=FLOAT_DTYPE) / FLOAT_DTYPE(window_size)
     mean = np.convolve(x_pad, kernel, mode="valid")
     mean_sq = np.convolve(x_pad ** 2, kernel, mode="valid")
-    return mean_sq - mean ** 2
+    return (mean_sq - mean ** 2).astype(FLOAT_DTYPE, copy=False)
 
 
 def compute_rolling_variance_dict(data_dict, window_size=51):
     """Apply rolling variance row-wise to each DataFrame in a dict."""
     out_dict = {}
     for key, df in data_dict.items():
-        arr = df.to_numpy()
-        out = np.array([compute_rolling_variance(row, window_size) for row in arr])
+        arr = df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
+        out = np.array([compute_rolling_variance(row, window_size) for row in arr], dtype=FLOAT_DTYPE)
         out_dict[key] = pd.DataFrame(out, index=df.index, columns=df.columns)
     return out_dict
 
 
 def compute_rolling_energy(signal, window_size=51):
     """Rolling energy = mean of squared signal."""
-    signal = np.asarray(signal, dtype=float)
+    signal = np.asarray(signal, dtype=FLOAT_DTYPE)
     if signal.ndim != 1:
         raise ValueError(f"signal must be 1D, got shape {signal.shape}")
     if window_size < 1 or window_size % 2 == 0:
@@ -93,16 +106,16 @@ def compute_rolling_energy(signal, window_size=51):
 
     pad = window_size // 2
     x_pad = np.pad(signal, (pad, pad), mode="reflect")
-    kernel = np.ones(window_size, dtype=float) / window_size
-    return np.convolve(x_pad ** 2, kernel, mode="valid")
+    kernel = np.ones(window_size, dtype=FLOAT_DTYPE) / FLOAT_DTYPE(window_size)
+    return np.convolve(x_pad ** 2, kernel, mode="valid").astype(FLOAT_DTYPE, copy=False)
 
 
 def compute_derivative_energy_dict(data_dict, window_size=51):
     """Compute rolling energy on derivative signals."""
     out_dict = {}
     for key, df in data_dict.items():
-        arr = df.to_numpy()
-        out = np.array([compute_rolling_energy(row, window_size) for row in arr])
+        arr = df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
+        out = np.array([compute_rolling_energy(row, window_size) for row in arr], dtype=FLOAT_DTYPE)
         out_dict[key] = pd.DataFrame(out, index=df.index, columns=df.columns)
     return out_dict
 
@@ -115,7 +128,7 @@ def _resolve_hampel_radius(radius=5):
 
 def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     """Apply a row-wise Hampel filter to a 2D array [n_samples, signal_length]."""
-    values = np.asarray(values, dtype=float)
+    values = np.asarray(values, dtype=FLOAT_DTYPE)
     if values.ndim != 2:
         raise ValueError(f"values must be 2D, got shape {values.shape}")
 
@@ -134,7 +147,7 @@ def apply_hampel_filter_array(values, radius=5, n_sigmas=3.0, scale=1.4826):
     replace_mask |= (mad == 0) & (values != medians)
     filtered[replace_mask] = medians[replace_mask]
 
-    return filtered
+    return filtered.astype(FLOAT_DTYPE, copy=False)
 
 
 def fast_spike_filter_dict(
@@ -170,7 +183,7 @@ def fast_spike_filter_dict(
 
     filtered_dict = {}
     for key, data_df in data_dict.items():
-        values = np.asarray(data_df.values, dtype=float)
+        values = np.asarray(data_df.values, dtype=FLOAT_DTYPE)
         if method == "hampel":
             filtered_values = apply_hampel_filter_array(
                 values,
@@ -191,16 +204,20 @@ def fast_spike_filter_dict(
                     f"log1p transform requires non-negative values; "
                     f"class '{key}' has minimum {filtered_values.min():.6g}"
                 )
-            filtered_values = np.log1p(filtered_values)
+            filtered_values = np.log1p(filtered_values).astype(FLOAT_DTYPE, copy=False)
         elif transform == "sqrt":
             if np.any(filtered_values < 0):
                 raise ValueError(
                     f"sqrt transform requires non-negative values; "
                     f"class '{key}' has minimum {filtered_values.min():.6g}"
                 )
-            filtered_values = np.sqrt(filtered_values)
+            filtered_values = np.sqrt(filtered_values).astype(FLOAT_DTYPE, copy=False)
 
-        filtered_dict[key] = pd.DataFrame(filtered_values, columns=data_df.columns, index=data_df.index)
+        filtered_dict[key] = pd.DataFrame(
+            np.asarray(filtered_values, dtype=FLOAT_DTYPE),
+            columns=data_df.columns,
+            index=data_df.index,
+        )
     return filtered_dict
 
 
@@ -216,7 +233,7 @@ def fast_spike_filter(
     Detection compares each point against the average of its immediate
     neighbors. Suspect points are replaced by the median in a local window.
     """
-    values = np.asarray(values, dtype=float)
+    values = np.asarray(values, dtype=FLOAT_DTYPE)
     original_ndim = values.ndim
 
     if values.ndim == 1:
@@ -238,7 +255,8 @@ def fast_spike_filter(
     radius = int(radius)
     n_features = values.shape[1]
     if n_features < 3:
-        return values[0] if original_ndim == 1 else values.copy()
+        out = values[0] if original_ndim == 1 else values.copy()
+        return np.asarray(out, dtype=FLOAT_DTYPE)
 
     left = values[:, :-2]
     center = values[:, 1:-1]
@@ -260,7 +278,8 @@ def fast_spike_filter(
     filtered = values.copy()
     filtered[suspect_mask] = medians[suspect_mask]
 
-    return filtered[0] if original_ndim == 1 else filtered
+    out = filtered[0] if original_ndim == 1 else filtered
+    return np.asarray(out, dtype=FLOAT_DTYPE)
 
 
 def build_two_channel_dataset(original_dict, diff_filtered_dict):
@@ -305,7 +324,7 @@ def build_multi_channel_dataset(data_dict_map, selected_types):
         channel_values = []
         base_shape = None
         for type_name, data_dict in zip(selected_types, selected_dicts):
-            values = data_dict[label].values
+            values = data_dict[label].to_numpy(dtype=FLOAT_DTYPE, copy=False)
             if base_shape is None:
                 base_shape = values.shape
             elif values.shape != base_shape:
@@ -314,13 +333,13 @@ def build_multi_channel_dataset(data_dict_map, selected_types):
                 )
             channel_values.append(values)
 
-        x = np.stack(channel_values, axis=1)
+        x = np.stack(channel_values, axis=1).astype(FLOAT_DTYPE, copy=False)
         y = np.full(base_shape[0], label)
 
         x_list.append(x)
         y_list.append(y)
 
-    x_all = np.concatenate(x_list, axis=0)
+    x_all = np.concatenate(x_list, axis=0).astype(FLOAT_DTYPE, copy=False)
     y_all = np.concatenate(y_list, axis=0)
     return x_all, y_all
 
@@ -391,7 +410,11 @@ def downsample_dict_signals(data_dict, step=2, offset=0):
 
     downsampled = {}
     for key, df in data_dict.items():
-        downsampled[key] = df.iloc[:, offset::step].copy()
+        downsampled[key] = pd.DataFrame(
+            df.iloc[:, offset::step].to_numpy(dtype=FLOAT_DTYPE, copy=True),
+            index=df.index,
+            columns=df.columns[offset::step],
+        )
     return downsampled
 
 
@@ -417,7 +440,15 @@ def calculate_residual_dict(minuend_dict, subtrahend_dict):
         if not minuend_df.index.equals(subtrahend_df.index):
             raise ValueError(f"Index mismatch for class '{key}'")
 
-        residual_dict[key] = minuend_df - subtrahend_df
+        residual_values = (
+            minuend_df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
+            - subtrahend_df.to_numpy(dtype=FLOAT_DTYPE, copy=False)
+        ).astype(FLOAT_DTYPE, copy=False)
+        residual_dict[key] = pd.DataFrame(
+            residual_values,
+            columns=minuend_df.columns,
+            index=minuend_df.index,
+        )
 
     return residual_dict
 
@@ -438,16 +469,16 @@ def build_stratified_cv_indices(y_trainval, n_splits=5, random_seed=42):
 
 
 def normalize_fold_channels(x_train, x_val):
-    x_train_norm = x_train.copy()
-    x_val_norm = x_val.copy()
+    x_train_norm = np.asarray(x_train, dtype=FLOAT_DTYPE).copy()
+    x_val_norm = np.asarray(x_val, dtype=FLOAT_DTYPE).copy()
 
     n_channels = x_train_norm.shape[1]
     scalers = []
     for ch in range(n_channels):
         scaler = StandardScaler()
         scaler.fit(x_train_norm[:, ch, :])
-        x_train_norm[:, ch, :] = scaler.transform(x_train_norm[:, ch, :])
-        x_val_norm[:, ch, :] = scaler.transform(x_val_norm[:, ch, :])
+        x_train_norm[:, ch, :] = scaler.transform(x_train_norm[:, ch, :]).astype(FLOAT_DTYPE, copy=False)
+        x_val_norm[:, ch, :] = scaler.transform(x_val_norm[:, ch, :]).astype(FLOAT_DTYPE, copy=False)
         scalers.append(scaler)
 
     return x_train_norm, x_val_norm, scalers
@@ -455,7 +486,10 @@ def normalize_fold_channels(x_train, x_val):
 
 def clip_normalized_fold_channels(x_train, x_val, max_value=15.0):
     """Apply elementwise upper clipping to normalized fold arrays."""
-    return np.clip(x_train, a_min=None, a_max=max_value), np.clip(x_val, a_min=None, a_max=max_value)
+    return (
+        np.clip(x_train, a_min=None, a_max=max_value).astype(FLOAT_DTYPE, copy=False),
+        np.clip(x_val, a_min=None, a_max=max_value).astype(FLOAT_DTYPE, copy=False),
+    )
 
 
 def build_normalized_cv_folds(
