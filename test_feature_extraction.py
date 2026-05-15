@@ -69,10 +69,10 @@ x_all, y_all = Preprocessing.build_multi_channel_dataset(
 ## feature and plotting
 RANDOM_SEED = 152
 rng = np.random.default_rng(RANDOM_SEED)
-sample_indices = rng.choice(x_all.shape[0], size=30, replace=False)
+sample_indices = rng.choice(x_all.shape[0], size=20, replace=False)
 BAND_EDGES = [(0, 200), (200, 350), (350, 540)]
 
-fig, axes = plt.subplots(5, 6, figsize=(20, 12))
+fig, axes = plt.subplots(4, 5, figsize=(20, 12))
 axes = axes.ravel()
 
 for ax, sample_idx in zip(axes, sample_indices):
@@ -89,6 +89,7 @@ for ax, sample_idx in zip(axes, sample_indices):
         peak_selection="amplitude",
         dip_selection="amplitude",
     )
+    area_features = Peak_Dip_Features.calculate_doublet_area_features(peak_dip_pairs, signal)
     peaks = peaks_and_dips["peak_frequencies"]
     dips = peaks_and_dips["dip_frequencies"]
     peak_width_heights = peaks_and_dips["peak_width_heights"]
@@ -96,6 +97,11 @@ for ax, sample_idx in zip(axes, sample_indices):
     peak_right_ips = peaks_and_dips["peak_right_ips"]
     peak_left_bases = peaks_and_dips["peak_left_bases"]
     peak_right_bases = peaks_and_dips["peak_right_bases"]
+    dip_width_heights = peaks_and_dips["dip_width_heights"]
+    dip_left_ips = peaks_and_dips["dip_left_ips"]
+    dip_right_ips = peaks_and_dips["dip_right_ips"]
+    dip_left_bases = peaks_and_dips["dip_left_bases"]
+    dip_right_bases = peaks_and_dips["dip_right_bases"]
 
     ax.plot(x_axis, signal, color="black", linewidth=1.0)
     ax.scatter(peaks, signal[peaks], marker="^", color="red", s=40, label="peaks")
@@ -154,27 +160,6 @@ for ax, sample_idx in zip(axes, sample_indices):
                     label="peak prominence",
                 )
 
-            peak_note = (
-                f"a={main_peak_amp:.1f}\n"
-                f"w={pair['main_peak_width']:.1f}\n"
-                f"p={pair['main_peak_prominence']:.1f}"
-            )
-            place_below = main_peak_amp > signal_min + 0.82 * signal_range
-            y_offset = -10 if place_below else 8
-            vertical_align = "top" if place_below else "bottom"
-            ax.annotate(
-                peak_note,
-                xy=(main_peak_freq, main_peak_amp),
-                xytext=(5, y_offset),
-                textcoords="offset points",
-                fontsize=7,
-                color="darkorange",
-                ha="left",
-                va=vertical_align,
-                annotation_clip=False,
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="darkorange", alpha=0.75),
-            )
-
         if pair.get("pair_exists", False):
             left_freq = int(pair["left_peak_freq"])
             right_freq = int(pair["right_peak_freq"])
@@ -192,24 +177,30 @@ for ax, sample_idx in zip(axes, sample_indices):
                 label="selected pair peaks",
             )
 
-            for peak_freq, peak_width, peak_prominence, width_color, prom_color, width_label, prom_span_label, prom_label in (
+            use_dip_reference_width = pair.get("middle_dip_exists", False)
+
+            for side, peak_freq, peak_width, peak_prominence, width_color, label_color, prom_color, width_label, prom_span_label, prom_label in (
                 (
+                    "left",
                     left_freq,
                     pair["left_peak_width"],
                     pair["left_peak_prominence"],
                     "deepskyblue",
+                    "deepskyblue",
                     "limegreen",
-                    "left peak width",
+                    "left peak width at dip",
                     "left peak prominence span",
                     "left peak prominence",
                 ),
                 (
+                    "right",
                     right_freq,
                     pair["right_peak_width"],
                     pair["right_peak_prominence"],
                     "mediumorchid",
+                    "firebrick",
                     "goldenrod",
-                    "right peak width",
+                    "right peak width at dip",
                     "right peak prominence span",
                     "right peak prominence",
                 ),
@@ -220,12 +211,24 @@ for ax, sample_idx in zip(axes, sample_indices):
                     continue
 
                 peak_id = int(peak_ids[0])
-                width_height = float(peak_width_heights[peak_id])
-                width_left = float(peak_left_ips[peak_id])
-                width_right = float(peak_right_ips[peak_id])
+                if use_dip_reference_width:
+                    width_height = float(pair["middle_dip_amp"])
+                    width_left = float(pair[f"{side}_peak_left_ips_at_middle_dip"])
+                    width_right = float(pair[f"{side}_peak_right_ips_at_middle_dip"])
+                    peak_width_value = float(pair[f"{side}_peak_width_at_middle_dip"])
+                else:
+                    width_height = float(peak_width_heights[peak_id])
+                    width_left = float(peak_left_ips[peak_id])
+                    width_right = float(peak_right_ips[peak_id])
+                    peak_width_value = float(peak_width)
                 prom_left = int(peak_left_bases[peak_id])
                 prom_right = int(peak_right_bases[peak_id])
                 prom_base_level = peak_amp - float(peak_prominence)
+                area_prefix = f"band{pair['band_id']}"
+                if use_dip_reference_width:
+                    peak_area_value = float(area_features[f"{area_prefix}_{side}_peak_area_at_middle_dip"])
+                else:
+                    peak_area_value = float(area_features[f"{area_prefix}_{side}_peak_area"])
 
                 ax.hlines(
                     y=width_height,
@@ -257,9 +260,33 @@ for ax, sample_idx in zip(axes, sample_indices):
                     label=prom_label,
                 )
 
+                peak_note = (
+                    f"{side[0]} a={peak_amp:.1f}\n"
+                    f"w={peak_width_value:.1f}\n"
+                    f"A={peak_area_value:.1f}\n"
+                    f"p={peak_prominence:.1f}"
+                )
+                place_below = peak_amp > signal_min + 0.82 * signal_range
+                y_offset = -10 if place_below else 8
+                x_offset = -28 if side == "left" else 6
+                horizontal_align = "right" if side == "left" else "left"
+                vertical_align = "top" if place_below else "bottom"
+                ax.annotate(
+                    peak_note,
+                    xy=(peak_freq, peak_amp),
+                    xytext=(x_offset, y_offset),
+                    textcoords="offset points",
+                    fontsize=6.8,
+                    color=label_color,
+                    ha=horizontal_align,
+                    va=vertical_align,
+                    annotation_clip=False,
+                    bbox=dict(boxstyle="round,pad=0.18", fc="white", ec=label_color, alpha=0.75),
+                )
+
             if pair.get("middle_dip_exists", False):
                 dip_freq = int(pair["middle_dip_freq"])
-                dip_amp = signal[dip_freq]
+                dip_amp = float(signal[dip_freq])
                 ax.scatter(
                     [dip_freq],
                     [dip_amp],
@@ -275,6 +302,77 @@ for ax, sample_idx in zip(axes, sample_indices):
                     color="purple",
                     linewidth=1.0,
                     alpha=0.6,
+                )
+
+                dip_ids = np.where(dips == dip_freq)[0]
+                if dip_ids.size > 0:
+                    dip_id = int(dip_ids[0])
+                    dip_width_height = float(dip_width_heights[dip_id])
+                    dip_width_left = float(dip_left_ips[dip_id])
+                    dip_width_right = float(dip_right_ips[dip_id])
+                    dip_prom_left = int(dip_left_bases[dip_id])
+                    dip_prom_right = int(dip_right_bases[dip_id])
+                    dip_prom_base_level = dip_amp + float(pair["middle_dip_prominence"])
+
+                    ax.hlines(
+                        y=dip_width_height,
+                        xmin=dip_width_left,
+                        xmax=dip_width_right,
+                        color="purple",
+                        linewidth=1.2,
+                        linestyle="-.",
+                        alpha=0.9,
+                        label="middle dip width",
+                    )
+                    ax.vlines(
+                        x=[dip_width_left, dip_width_right],
+                        ymin=dip_width_height - 0.35,
+                        ymax=dip_width_height + 0.35,
+                        color="purple",
+                        linewidth=1.0,
+                        alpha=0.9,
+                    )
+                    ax.hlines(
+                        y=dip_prom_base_level,
+                        xmin=dip_prom_left,
+                        xmax=dip_prom_right,
+                        color="magenta",
+                        linewidth=1.0,
+                        linestyle=":",
+                        alpha=0.85,
+                        label="middle dip prominence span",
+                    )
+                    ax.vlines(
+                        x=dip_freq,
+                        ymin=dip_amp,
+                        ymax=dip_prom_base_level,
+                        color="magenta",
+                        linewidth=1.0,
+                        alpha=0.85,
+                        label="middle dip prominence",
+                    )
+
+                dip_area_value = float(area_features[f"band{pair['band_id']}_middle_dip_area"])
+                dip_note = (
+                    f"d a={dip_amp:.1f}\n"
+                    f"w={pair['middle_dip_width']:.1f}\n"
+                    f"A={dip_area_value:.1f}\n"
+                    f"p={pair['middle_dip_prominence']:.1f}"
+                )
+                place_above = dip_amp < signal_min + 0.22 * signal_range
+                y_offset = 10 if place_above else -10
+                vertical_align = "bottom" if place_above else "top"
+                ax.annotate(
+                    dip_note,
+                    xy=(dip_freq, dip_amp),
+                    xytext=(6, y_offset),
+                    textcoords="offset points",
+                    fontsize=6.5,
+                    color="purple",
+                    ha="left",
+                    va=vertical_align,
+                    annotation_clip=False,
+                    bbox=dict(boxstyle="round,pad=0.18", fc="white", ec="purple", alpha=0.72),
                 )
         elif pair.get("main_peak_exists", False):
             peak_freq = int(pair["main_peak_freq"])
@@ -306,10 +404,6 @@ fig.tight_layout(rect=(0, 0, 1, 0.96))
 plt.show()
 
 
-##
+## feature calculation
 doublet_features = Peak_Dip_Features.calculate_doublet_features(peak_dip_pairs)
-Peak_Dip_Features.calculate_doublet_area_features(peak_dip_pairs, signal)
-
-
-peaks_and_dips = Peak_Dip_Features.detect_peaks_and_dips(x_all[2395, 0, :], min_prominence_frac=0.20, min_distance=1, min_width=1,
-                                                         percentile_method="histogram")
+area_features = Peak_Dip_Features.calculate_doublet_area_features(peak_dip_pairs, x_all[1698, 0, :])

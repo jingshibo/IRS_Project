@@ -74,6 +74,7 @@ def detect_peaks_and_dips(
     dip_amplitudes = x[dips]
 
     return {
+        "signal": x,
         "peak_frequencies": peaks,
         "peak_amplitudes": peak_amplitudes,
         "peak_prominences": peak_props["prominences"],
@@ -91,7 +92,9 @@ def detect_peaks_and_dips(
         "dip_amplitudes": dip_amplitudes,
         "dip_prominences": dip_props["prominences"],
         "dip_widths": dip_width_result[0],
-        "dip_width_heights": dip_width_result[1],
+        # peak_widths(-x, ...) returns heights in -signal coordinates.
+        # Convert back so plotting/features can use the original signal axis.
+        "dip_width_heights": -dip_width_result[1],
         "dip_left_ips": dip_width_result[2],
         "dip_right_ips": dip_width_result[3],
         "dip_left_bases": dip_props["left_bases"],
@@ -100,7 +103,40 @@ def detect_peaks_and_dips(
 
 
 ##
-import numpy as np
+def _interpolated_level_crossing(
+    x: np.ndarray,
+    start_idx: int,
+    direction: int,
+    level: float,
+) -> float:
+    """Find where the signal first crosses down to `level` from a peak."""
+    n = len(x)
+    idx = int(start_idx)
+
+    while 0 <= idx + direction < n:
+        next_idx = idx + direction
+        y0 = float(x[idx])
+        y1 = float(x[next_idx])
+
+        if min(y0, y1) <= level <= max(y0, y1):
+            if y0 == y1:
+                return float(next_idx)
+            frac = (level - y0) / (y1 - y0)
+            return float(idx + frac * direction)
+
+        idx = next_idx
+
+    return float(np.clip(idx, 0, n - 1))
+
+
+def _peak_width_at_level(
+    x: np.ndarray,
+    peak_idx: int,
+    level: float,
+) -> tuple[float, float, float]:
+    left_ips = _interpolated_level_crossing(x, peak_idx, direction=-1, level=level) #   Search crossing at the left
+    right_ips = _interpolated_level_crossing(x, peak_idx, direction=1, level=level) #   Search crossing at the right
+    return right_ips - left_ips, left_ips, right_ips
 
 
 def select_band_peak_dip_pairs(
@@ -124,6 +160,9 @@ def select_band_peak_dip_pairs(
     peak_dip_pairs:
         List of candidate dictionaries, one per band.
     """
+
+    signal = detected_peak_dip.get("signal")
+    signal = np.asarray(signal, dtype=np.float32)
 
     peak_freq = detected_peak_dip["peak_frequencies"]
     peak_amp = detected_peak_dip["peak_amplitudes"]
@@ -269,6 +308,29 @@ def select_band_peak_dip_pairs(
                 "middle_dip_right_ips": dip_right_ips[best_dip_id],
             })
 
+            # Calculate peak widths at the dip amplitude level
+            level = float(dip_amp[best_dip_id])
+            left_width, left_level_ips, left_level_right_ips = _peak_width_at_level(
+                signal,
+                peak_idx=int(f_left),
+                level=level,
+            )
+            right_width, right_level_left_ips, right_level_right_ips = _peak_width_at_level(
+                signal,
+                peak_idx=int(f_right),
+                level=level,
+            )
+
+            candidate.update({
+                "left_peak_width_at_middle_dip": left_width,
+                "left_peak_left_ips_at_middle_dip": left_level_ips,
+                "left_peak_right_ips_at_middle_dip": left_level_right_ips,
+
+                "right_peak_width_at_middle_dip": right_width,
+                "right_peak_left_ips_at_middle_dip": right_level_left_ips,
+                "right_peak_right_ips_at_middle_dip": right_level_right_ips,
+            })
+
         peak_dip_pairs.append(candidate)
 
     return peak_dip_pairs
@@ -316,11 +378,15 @@ def calculate_doublet_features(
             "main_peak_freq", "main_peak_amp", "main_peak_prominence", "main_peak_width", "main_peak_Q",
             # left peak
             "left_peak_freq", "left_peak_amp", "left_peak_prominence", "left_peak_width", "left_peak_Q",
+            "left_peak_width_at_middle_dip", "left_peak_Q_at_middle_dip",
             # right peak
             "right_peak_freq", "right_peak_amp", "right_peak_prominence", "right_peak_width", "right_peak_Q",
+            "right_peak_width_at_middle_dip", "right_peak_Q_at_middle_dip",
             # peak-pair geometry
             "peak_separation", "peak_balance_amp", "peak_balance_prominence", "peak_balance_width",
+            "peak_balance_width_at_middle_dip",
             "signed_amp_imbalance", "signed_prominence_imbalance", "signed_width_imbalance",
+            "signed_width_imbalance_at_middle_dip",
             # middle dip
             "middle_dip_freq", "middle_dip_amp", "middle_dip_prominence", "middle_dip_width", "middle_dip_Q",
             # doublet morphology
@@ -409,6 +475,20 @@ def calculate_doublet_features(
         # Uses amp_balance so the score rewards balanced peak-dip-peak structures
         doublet_score = dip_depth * amp_balance / max(separation, eps)
 
+        left_w_at_dip = pair.get("left_peak_width_at_middle_dip", 0.0)
+        right_w_at_dip = pair.get("right_peak_width_at_middle_dip", 0.0)
+        width_balance_at_dip = min(abs(left_w_at_dip), abs(right_w_at_dip)) / max(
+            max(abs(left_w_at_dip), abs(right_w_at_dip)), eps,)
+        signed_width_imbalance_at_dip = (left_w_at_dip - right_w_at_dip) / max(
+            abs(left_w_at_dip) + abs(right_w_at_dip), eps,)
+
+        features[f"{prefix}_left_peak_width_at_middle_dip"] = left_w_at_dip
+        features[f"{prefix}_left_peak_Q_at_middle_dip"] = left_f / max(left_w_at_dip, eps)
+        features[f"{prefix}_right_peak_width_at_middle_dip"] = right_w_at_dip
+        features[f"{prefix}_right_peak_Q_at_middle_dip"] = right_f / max(right_w_at_dip, eps)
+        features[f"{prefix}_peak_balance_width_at_middle_dip"] = width_balance_at_dip
+        features[f"{prefix}_signed_width_imbalance_at_middle_dip"] = signed_width_imbalance_at_dip
+
         features[f"{prefix}_middle_dip_freq"] = dip_f
         features[f"{prefix}_middle_dip_amp"] = dip_amp
         features[f"{prefix}_middle_dip_prominence"] = pair["middle_dip_prominence"]
@@ -491,7 +571,10 @@ def calculate_doublet_area_features(
         # -------------------------
         default_keys = [
             "main_peak_area", "main_peak_area_norm", "left_peak_area", "left_peak_area_norm",
-            "right_peak_area", "right_peak_area_norm", "middle_dip_area", "middle_dip_area_norm",
+            "right_peak_area", "right_peak_area_norm",
+            "left_peak_area_at_middle_dip", "left_peak_area_at_middle_dip_norm",
+            "right_peak_area_at_middle_dip", "right_peak_area_at_middle_dip_norm",
+            "middle_dip_area", "middle_dip_area_norm",
             "doublet_valley_area", "doublet_valley_area_norm",
         ]
 
@@ -580,6 +663,37 @@ def calculate_doublet_area_features(
         dip_prom = pair["middle_dip_prominence"]
         dip_width = pair["middle_dip_width"]
 
+        left_width_at_dip = pair.get("left_peak_width_at_middle_dip", 0.0)
+        right_width_at_dip = pair.get("right_peak_width_at_middle_dip", 0.0)
+
+        if "left_peak_left_ips_at_middle_dip" in pair and "left_peak_right_ips_at_middle_dip" in pair:
+            left_area_at_dip = _positive_area(
+                x=signal,
+                start_idx=pair["left_peak_left_ips_at_middle_dip"],
+                end_idx=pair["left_peak_right_ips_at_middle_dip"],
+                baseline=dip_amp,
+                mode="peak",
+            )
+            left_height_at_dip = max(left_amp - dip_amp, eps)
+            features[f"{prefix}_left_peak_area_at_middle_dip"] = left_area_at_dip
+            features[f"{prefix}_left_peak_area_at_middle_dip_norm"] = (
+                left_area_at_dip / max(left_height_at_dip * left_width_at_dip, eps)
+            )
+
+        if "right_peak_left_ips_at_middle_dip" in pair and "right_peak_right_ips_at_middle_dip" in pair:
+            right_area_at_dip = _positive_area(
+                x=signal,
+                start_idx=pair["right_peak_left_ips_at_middle_dip"],
+                end_idx=pair["right_peak_right_ips_at_middle_dip"],
+                baseline=dip_amp,
+                mode="peak",
+            )
+            right_height_at_dip = max(right_amp - dip_amp, eps)
+            features[f"{prefix}_right_peak_area_at_middle_dip"] = right_area_at_dip
+            features[f"{prefix}_right_peak_area_at_middle_dip_norm"] = (
+                right_area_at_dip / max(right_height_at_dip * right_width_at_dip, eps)
+            )
+
         # For dips, prominence is measured on -signal.
         # So local baseline is approximately:
         # baseline = dip_amp + dip_prom
@@ -602,7 +716,6 @@ def calculate_doublet_area_features(
         # This is not limited to the dip_width only.
         # It measures the whole valley between the two selected peaks.
         valley_baseline = min(left_amp, right_amp)
-        peak_separation = right_f - left_f
 
         doublet_valley_area = _positive_area(
             x=signal,
@@ -613,11 +726,10 @@ def calculate_doublet_area_features(
         )
 
         dip_depth = max(min(left_amp, right_amp) - dip_amp, 0.0)
+        peak_separation = right_f - left_f
 
         features[f"{prefix}_doublet_valley_area"] = doublet_valley_area
-        features[f"{prefix}_doublet_valley_area_norm"] = (
-            doublet_valley_area / max(dip_depth * peak_separation, eps)
-        )
+        features[f"{prefix}_doublet_valley_area_norm"] = (doublet_valley_area / max(dip_depth * peak_separation, eps))
 
     return features
 
