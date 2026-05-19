@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-from Utility_Functions.Preprocessing import build_stratified_cv_indices
+from IRS_Insecticide_Residual.Utility_Functions.Preprocessing import build_stratified_cv_indices
 
 ##  standardize a tabular feature matrix [N, F] using train-only statistics
 def normalize_fold_feature_matrix(x_train, x_val):

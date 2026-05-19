@@ -3,13 +3,12 @@
 # PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # if PROJECT_ROOT not in sys.path:
 #     sys.path.insert(0, PROJECT_ROOT)
-import importlib
-from datetime import datetime
 import pandas as pd
-from Raw_Data_Implementation import Grid_Search
-from Raw_Data_Implementation.Models import Model_Training, Model_Structure
-from Utility_Functions import Preprocessing, Viewing
-
+from IRS_Insecticide_Residual.Feature_Implementation import Feature_Preprocessing
+from IRS_Insecticide_Residual.Feature_Implementation.Models import Feature_Training
+from IRS_Insecticide_Residual.Feature_Implementation.Functions import Feature_Extraction
+from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Functions import Viewing
 
 ## load data
 excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
@@ -62,8 +61,8 @@ original_envelope_dict = Preprocessing.apply_savgol_filter_dict(original_filtere
 original_residual_dict = Preprocessing.calculate_residual_dict(original_filtered_dict, original_envelope_dict)
 
 
-## create dataset
-random_seed = 42
+## feature extraction
+RANDOM_SEED = 42
 value_type_dicts = {
     "original": original_filtered_dict,
     "first_diff_filtered": central_diff_filtered_dict,
@@ -79,39 +78,64 @@ x_all, y_all = Preprocessing.build_multi_channel_dataset(
     selected_types=selected_value_types,
 )
 
-x_trainval, x_test, y_trainval, y_test = Preprocessing.split_holdout(
+X_trainval_signal, X_test_signal, y_trainval, y_test = Preprocessing.split_holdout(
     x_all,
     y_all,
     test_size=0.15,
-    random_seed=random_seed,
+    random_seed=RANDOM_SEED,
 )
 
-cv_folds = Preprocessing.build_normalized_cv_folds(
-    x_trainval,
+
+X_trainval_features, feature_names = Feature_Extraction.extract_feature_matrix(
+    X_trainval_signal,
+    channel_names=selected_value_types,
+)
+X_test_features, _ = Feature_Extraction.extract_feature_matrix(
+    X_test_signal,
+    channel_names=selected_value_types,
+)
+print("Signal train/val shape:", X_trainval_signal.shape)
+print("Feature train/val shape:", X_trainval_features.shape)
+print("Signal holdout shape:", X_test_signal.shape)
+print("Feature holdout shape:", X_test_features.shape)
+print("Extracted feature count:", len(feature_names))
+
+
+## create dataset
+cv_indices = Preprocessing.build_stratified_cv_indices(
     y_trainval,
     n_splits=5,
-    random_seed=random_seed,
+    random_seed=RANDOM_SEED,
+)
+signal_cv_folds = Preprocessing.build_normalized_cv_folds(
+    X_trainval_signal,
+    y_trainval,
+    n_splits=5,
+    random_seed=RANDOM_SEED,
     clip_max_value=None,
+    cv_indices=cv_indices,
+)
+feature_cv_folds = Feature_Preprocessing.build_normalized_feature_cv_folds(
+    X_trainval_features,
+    y_trainval,
+    n_splits=5,
+    random_seed=RANDOM_SEED,
+    cv_indices=cv_indices,
 )
 
 
 ## model training
-importlib.reload(Model_Structure)
-importlib.reload(Model_Training)
-model_name = "shared_backbone_2ch"
-train_out: Model_Training.TrainOutput = Model_Training.train_1d_cnn_cv(
-    cv_folds=cv_folds,
+model_name = "feature_mlp_classifier"
+train_out = Feature_Training.train_feature_mlp_cv(
+    cv_folds=feature_cv_folds,
     class_order=class_order,
-    model_name=model_name,
     epochs=100,
     batch_size=32,
-    lr=1e-4,
+    lr=1e-3,
     weight_decay=1e-4,
-    label_smoothing=0.3,
+    label_smoothing=0.1,
     patience=25,
-    random_shift_max_points=5,
-    random_shift_fill_mode="wrap",
-    tensorboard_log_dir="runs/1d_cnn_cv",
+    tensorboard_log_dir="runs/feature_mlp_cv",
 )
 print("Mean best val acc:", train_out["mean_best_val_acc"])
 print("Class index mapping:", train_out["label_to_idx"])
@@ -119,16 +143,16 @@ print("Model name:", model_name)
 
 
 ## plotting
-plot_options = {
+PLOT_OPTIONS = {
     "threshold_hits": False,
     "classification_examples": False,
     "certain_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": False,
+    "random_sample_overview": True,
     "normalized_data_inspection": False,
 }
 
-plot_config = {
+PLOT_CONFIG = {
     "threshold_hits": {
         "channel_idx": 0,
         "threshold": 25.0,
@@ -148,7 +172,7 @@ plot_config = {
         "channel_idx": 0,
     },
     "random_sample_overview": {
-        "classes": ("TARGET",),
+        "classes": ("LOW",),
         "n_samples": 30,
         "ncols": 6,
     },
@@ -158,33 +182,33 @@ plot_config = {
     },
 }
 
-if plot_options["threshold_hits"]:
+if PLOT_OPTIONS["threshold_hits"]:
     Viewing.plot_threshold_hits(
-        cv_folds=cv_folds,
-        **plot_config["threshold_hits"],
+        cv_folds=signal_cv_folds,
+        **PLOT_CONFIG["threshold_hits"],
     )
 
-if plot_options["classification_examples"]:
+if PLOT_OPTIONS["classification_examples"]:
     Viewing.plot_classification_examples(
         train_out=train_out,
-        cv_folds=cv_folds,
+        cv_folds=signal_cv_folds,
         class_order=class_order,
-        **plot_config["classification_examples"],
+        **PLOT_CONFIG["classification_examples"],
     )
 
-if plot_options["certain_samples"]:
+if PLOT_OPTIONS["certain_samples"]:
     Viewing.plot_certain_samples(
         categorized_dict=categorized_dict,
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
-        x_trainval=x_trainval,
+        x_trainval=X_trainval_signal,
         y_trainval=y_trainval,
-        cv_folds=cv_folds,
+        cv_folds=signal_cv_folds,
         train_out=train_out,
-        **plot_config["certain_samples"],
+        **PLOT_CONFIG["certain_samples"],
     )
 
-if plot_options["mean_std_overview"]:
+if PLOT_OPTIONS["mean_std_overview"]:
     Viewing.plot_mean_std_overview(
         class_order=class_order,
         original_dict=sliced_dict,
@@ -197,10 +221,10 @@ if plot_options["mean_std_overview"]:
         derivative_energy_dict=derivative_energy_dict,
     )
 
-if plot_options["random_sample_overview"]:
+if PLOT_OPTIONS["random_sample_overview"]:
     Viewing.plot_random_sample_overview(
         class_order=class_order,
-        random_seed=random_seed,
+        random_seed=RANDOM_SEED,
         categorized_dict=categorized_dict,
         sliced_dict=sliced_dict,
         sliced_filtered_dict=sliced_filtered_dict,
@@ -213,71 +237,13 @@ if plot_options["random_sample_overview"]:
         second_diff_filtered_dict=second_diff_filtered_dict,
         rolling_variance_dict=rolling_variance_dict,
         derivative_energy_dict=derivative_energy_dict,
-        **plot_config["random_sample_overview"],
+        **PLOT_CONFIG["random_sample_overview"],
     )
 
-if plot_options["normalized_data_inspection"]:
+if PLOT_OPTIONS["normalized_data_inspection"]:
     Viewing.inspect_normalized_data(
-        cv_folds=cv_folds,
+        cv_folds=signal_cv_folds,
         class_order=class_order,
         selected_value_types=selected_value_types,
-        **plot_config["normalized_data_inspection"],
+        **PLOT_CONFIG["normalized_data_inspection"],
     )
-
-
-## grid search
-run_grid_search = False
-if run_grid_search:
-    importlib.reload(Grid_Search)
-    grid_search_space = {
-        "base_channels": [32],
-        "kernel_size": [5],
-        "l1": [512],
-        "l2": [256],
-        "weight_decay": [1e-4],
-        "dropout": [0.1],
-        "label_smoothing": [0.3],
-        "lr": [1e-4],
-        "batch_size": [32],
-        "conv_stride": [2],
-        "conv_dilation": [1],
-        "avgpool_kernel_size": [3],
-        "avgpool_stride": [2],
-        "pool_type": ["max"],
-        "leaky_relu_alpha": [0.05],
-        "scheduler_factor": [0.7],
-    }
-
-    grid_out = Grid_Search.run_grid_search_three_models(
-        cv_folds=cv_folds,
-        search_space=grid_search_space,
-        model_names=("shared_backbone_2ch",),
-        class_order=class_order,
-        epochs=100,
-        patience=25,
-        tensorboard_log_dir_root=None,
-        verbose_train=False,
-        print_progress=True,
-    )
-    Grid_Search.print_top_grid_results(grid_out, top_k=100)
-    grid_result_dir = f"runs/grid_search_results/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    saved_paths = Grid_Search.save_grid_search_results(
-        grid_out,
-        output_dir=grid_result_dir,
-        prefix="three_models",
-    )
-    print("Saved grid-search results:", saved_paths)
-
-    n_above_095 = sum(trial.mean_best_val_acc > 0.950 for trial in grid_out["valid_trials"])
-    print(f"Number of valid grid-search results with mean_best_val_acc > 0.95: {n_above_095}")
-    grid_top100_param_freq = Grid_Search.summarize_top_param_frequencies(
-        grid_out,
-        top_k=100,
-        include_model_name=True,
-    )
-    print("Top-100 parameter frequency summary dict:", grid_top100_param_freq)
-    Grid_Search.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
-    print("Best grid-search trial:", grid_out["best_trial"])
-
-
-

@@ -1,6 +1,7 @@
 import pandas as pd
 
-from Utility_Functions import Plotting_Functions, Preprocessing
+from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Functions import Plotting_Functions
 
 
 def plot_threshold_hits(

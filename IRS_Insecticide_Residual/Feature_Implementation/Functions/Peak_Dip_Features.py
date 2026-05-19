@@ -40,6 +40,9 @@ def detect_peaks_and_dips(
         min_width=3,
         percentile_method="histogram",
         histogram_bins=50,
+        general_peak_rel_height=0.5,
+        main_peak_rel_height=0.9,
+        dip_rel_height=0.5,
 ):
     x = np.asarray(signal, dtype=np.float32)
 
@@ -65,10 +68,10 @@ def detect_peaks_and_dips(
     dips, dip_props = find_peaks(-x, prominence=min_prominence, distance=min_distance, width=min_width)
 
     # widths at half-prominence for general peaks / dips
-    peak_width_result = peak_widths(x, peaks, rel_height=0.5)
-    dip_width_result = peak_widths(-x, dips, rel_height=0.5)
+    peak_width_result = peak_widths(x, peaks, rel_height=general_peak_rel_height)
+    dip_width_result = peak_widths(-x, dips, rel_height=dip_rel_height)
     # main peak width uses a deeper evaluation level
-    main_peak_width_result = peak_widths(x, peaks, rel_height=0.9)
+    main_peak_width_result = peak_widths(x, peaks, rel_height=main_peak_rel_height)
 
     peak_amplitudes = x[peaks]
     dip_amplitudes = x[dips]
@@ -354,6 +357,8 @@ def calculate_doublet_features(
     """
 
     features = {}
+    main_peak_freqs_by_band = {}
+    main_peak_amps_by_band = {}
 
     for pair in selected_pairs:
         band_id = pair["band_id"]
@@ -402,6 +407,8 @@ def calculate_doublet_features(
         if pair.get("main_peak_exists", False):
             main_f = pair["main_peak_freq"]
             main_w = pair["main_peak_width"]
+            main_peak_freqs_by_band[int(band_id)] = float(main_f)
+            main_peak_amps_by_band[int(band_id)] = float(pair["main_peak_amp"])
 
             features[f"{prefix}_main_peak_freq"] = main_f
             features[f"{prefix}_main_peak_amp"] = pair["main_peak_amp"]
@@ -499,6 +506,40 @@ def calculate_doublet_features(
         features[f"{prefix}_dip_depth_norm"] = dip_depth_norm
         features[f"{prefix}_dip_relative_position"] = dip_relative_position
         features[f"{prefix}_doublet_score"] = doublet_score
+
+    # comparing different bands
+    features["band1_to_band2_main_peak_distance"] = 0.0
+    features["band2_to_band3_main_peak_distance"] = 0.0
+    features["band1_to_band3_main_peak_distance"] = 0.0
+    features["band1_to_band2_main_peak_amp_ratio"] = 0.0
+    features["band2_to_band3_main_peak_amp_ratio"] = 0.0
+    features["band1_to_band3_main_peak_amp_ratio"] = 0.0
+
+    if 1 in main_peak_freqs_by_band and 2 in main_peak_freqs_by_band:
+        features["band1_to_band2_main_peak_distance"] = (
+            main_peak_freqs_by_band[2] - main_peak_freqs_by_band[1]
+        )
+    if 2 in main_peak_freqs_by_band and 3 in main_peak_freqs_by_band:
+        features["band2_to_band3_main_peak_distance"] = (
+            main_peak_freqs_by_band[3] - main_peak_freqs_by_band[2]
+        )
+    if 1 in main_peak_freqs_by_band and 3 in main_peak_freqs_by_band:
+        features["band1_to_band3_main_peak_distance"] = (
+            main_peak_freqs_by_band[3] - main_peak_freqs_by_band[1]
+        )
+
+    if 1 in main_peak_amps_by_band and 2 in main_peak_amps_by_band:
+        features["band1_to_band2_main_peak_amp_ratio"] = (
+            main_peak_amps_by_band[1] / max(main_peak_amps_by_band[2], eps)
+        )
+    if 2 in main_peak_amps_by_band and 3 in main_peak_amps_by_band:
+        features["band2_to_band3_main_peak_amp_ratio"] = (
+            main_peak_amps_by_band[2] / max(main_peak_amps_by_band[3], eps)
+        )
+    if 1 in main_peak_amps_by_band and 3 in main_peak_amps_by_band:
+        features["band1_to_band3_main_peak_amp_ratio"] = (
+            main_peak_amps_by_band[1] / max(main_peak_amps_by_band[3], eps)
+        )
 
     return features
 
