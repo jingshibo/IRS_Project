@@ -1,3 +1,4 @@
+##
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
@@ -5,6 +6,7 @@ import numpy as np
 from Functions import (
     append_pbs_reference_difference,
     apply_savgol_filter_nested,
+    apply_savgol_to_re_im_and_recompute,
     downsample_nested_data,
     load_liquid_folder,
     plot_all_liquids,
@@ -16,31 +18,35 @@ from Model import (
     build_stratified_cv_splits,
 )
 
-##
+## load data
 DATA_DIR = Path(r"/home/shibojing/data/adam wellcome")
-
-data = load_liquid_folder(DATA_DIR)
-difference_data = append_pbs_reference_difference(data)
-plot_all_liquids(difference_data, channel_idx=6)
-
-##
-filtered_difference_data = apply_savgol_filter_nested(
-    difference_data,
+# read raw data and calculate amp and phase based on raw data
+raw_data = load_liquid_folder(DATA_DIR)
+# filter re and im data for more stable amp/phase calculation (phase is very sensitive to sign variations in re/im)
+filtered_data = apply_savgol_to_re_im_and_recompute(
+    raw_data,
     window_length=31,
     polyorder=3,
 )
-downsample_ratio = 50
-filtered_difference_data = downsample_nested_data(
-    filtered_difference_data,
+
+## preprocessing
+# calculate difference between each liquid and the PBS reference.
+difference_data = append_pbs_reference_difference(filtered_data)
+# downsample raw data for
+downsample_ratio = 100
+downsampled_difference_data = downsample_nested_data(
+    difference_data,
     ratio=downsample_ratio,
 )
-plot_all_liquids(filtered_difference_data, channel_idx=6)
+# plot_all_liquids(difference_data, channel_idx=1)
+# plot_all_liquids(filtered_difference_data, channel_idx=1)
+
 
 ##
 RANDOM_SEED = 42
 dataset = build_classification_dataset(
-    filtered_difference_data,
-    channel_indices=(6,), ## how about only amplitude? actually worse than phase and both amp and phase.
+    downsampled_difference_data,
+    channel_indices=(7,), ## how about only amplitude? actually worse than phase and both amp and phase.
     label_mode="joint",
     include_reference=False,
 )
@@ -54,9 +60,9 @@ cv_splits = build_stratified_cv_splits(
 ##
 trainer = AdamWellcomeTrainer(
     TrainerConfig(
-        epochs=100,
-        batch_size=32,
-        patience=20,
+        epochs=1000,
+        batch_size=128,
+        patience=200,
         verbose=True,
     )
 )
@@ -78,8 +84,11 @@ average_val_recall_matrix = np.divide(
     out=np.zeros_like(average_val_confusion_matrix, dtype=np.float64),
     where=average_val_confusion_matrix.sum(axis=1, keepdims=True) != 0,
 )
-
 print(
-    f"Mean best val acc={mean_val_acc:.4f}, "
-    f"mean test acc={mean_test_acc:.4f}"
+    f"Mean best val acc={mean_val_acc:.4f}"
 )
+
+# print(
+#     f"Mean best val acc={mean_val_acc:.4f}, "
+#     f"mean test acc={mean_test_acc:.4f}"
+# )
