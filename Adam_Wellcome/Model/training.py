@@ -36,6 +36,10 @@ class TrainerConfig:
     device: Optional[str] = None
     num_workers: int = 0
     verbose: bool = True
+    use_lr_scheduler: bool = False
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 100
+    scheduler_min_lr: float = 1e-6
 
 
 @dataclass
@@ -153,6 +157,15 @@ class AdamWellcomeTrainer:
             lr=self.config.lr,
             weight_decay=self.config.weight_decay,
         )
+        scheduler = None
+        if self.config.use_lr_scheduler:
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode="min",
+                factor=self.config.scheduler_factor,
+                patience=self.config.scheduler_patience,
+                min_lr=self.config.scheduler_min_lr,
+            )
 
         history: Dict[str, List[float]] = {
             "train_loss": [],
@@ -175,11 +188,16 @@ class AdamWellcomeTrainer:
             history["val_acc"].append(val_acc)
 
             if self.config.verbose:
+                lr = optimizer.param_groups[0]["lr"]
                 print(
                     f"Epoch {epoch_idx + 1:03d} | "
+                    f"lr={lr:.6g} | "
                     f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
                     f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
                 )
+
+            if scheduler is not None:
+                scheduler.step(val_loss)
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc

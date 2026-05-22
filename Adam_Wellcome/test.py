@@ -2,8 +2,9 @@
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
-
+import importlib
 from Functions import (
+    append_pbs_complex_difference,
     append_pbs_reference_difference,
     apply_savgol_filter_nested,
     apply_savgol_to_re_im_and_recompute,
@@ -25,28 +26,38 @@ raw_data = load_liquid_folder(DATA_DIR)
 # filter re and im data for more stable amp/phase calculation (phase is very sensitive to sign variations in re/im)
 filtered_data = apply_savgol_to_re_im_and_recompute(
     raw_data,
-    window_length=31,
+    window_length=301,
     polyorder=3,
 )
+# plot_all_liquids(filtered_data, channel_idx=2)
 
 ## preprocessing
 # calculate difference between each liquid and the PBS reference.
 difference_data = append_pbs_reference_difference(filtered_data)
-# downsample raw data for
+difference_data = append_pbs_complex_difference(difference_data)
+# filtering difference data
+filtered_difference_data = apply_savgol_filter_nested(
+    difference_data,
+    window_length=301,
+    polyorder=3,
+)
+# downsample raw data
 downsample_ratio = 100
 downsampled_difference_data = downsample_nested_data(
-    difference_data,
+    filtered_difference_data,
     ratio=downsample_ratio,
 )
-# plot_all_liquids(difference_data, channel_idx=1)
-# plot_all_liquids(filtered_difference_data, channel_idx=1)
 
+# plot_all_liquids(difference_data, channel_idx=10)
+# plot_all_liquids(filtered_difference_data, channel_idx=8)
+# plot_all_liquids(filtered_difference_data, channel_idx=10)
+# plot_all_liquids(filtered_difference_data, channel_idx=11)
 
 ##
 RANDOM_SEED = 42
 dataset = build_classification_dataset(
     downsampled_difference_data,
-    channel_indices=(7,), ## how about only amplitude? actually worse than phase and both amp and phase.
+    channel_indices=(9, ), ## how about only amplitude? actually worse than phase and both amp and phase.
     label_mode="joint",
     include_reference=False,
 )
@@ -57,12 +68,13 @@ cv_splits = build_stratified_cv_splits(
     random_seed=RANDOM_SEED,
 )
 
-##
+#
+# initialize the trainer object with desired configuration
 trainer = AdamWellcomeTrainer(
     TrainerConfig(
-        epochs=1000,
+        epochs=1500,
         batch_size=128,
-        patience=200,
+        patience=300,
         verbose=True,
     )
 )
@@ -78,17 +90,28 @@ average_val_confusion_matrix = np.mean(
     [result.val_confusion_matrix.astype(np.float64) for result in fold_results],
     axis=0,
 )
+average_test_confusion_matrix = np.mean(
+    [result.confusion_matrix.astype(np.float64) for result in fold_results],
+    axis=0,
+)
 average_val_recall_matrix = np.divide(
     average_val_confusion_matrix,
     average_val_confusion_matrix.sum(axis=1, keepdims=True),
     out=np.zeros_like(average_val_confusion_matrix, dtype=np.float64),
     where=average_val_confusion_matrix.sum(axis=1, keepdims=True) != 0,
 )
+average_test_recall_matrix = np.divide(
+    average_test_confusion_matrix,
+    average_test_confusion_matrix.sum(axis=1, keepdims=True),
+    out=np.zeros_like(average_test_confusion_matrix, dtype=np.float64),
+    where=average_test_confusion_matrix.sum(axis=1, keepdims=True) != 0,
+)
 print(
-    f"Mean best val acc={mean_val_acc:.4f}"
+    f"Mean best val acc={mean_val_acc:.4f}, "
+    f"mean test acc={mean_test_acc:.4f}"
 )
 
-# print(
-#     f"Mean best val acc={mean_val_acc:.4f}, "
-#     f"mean test acc={mean_test_acc:.4f}"
-# )
+
+
+
+

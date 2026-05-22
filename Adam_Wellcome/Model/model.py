@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from torchinfo import summary
 
 
 def _conv_block(
@@ -70,3 +71,15 @@ class AdamWellcomeCNN1D(nn.Module):
         x = self.pool(x)
         return self.classifier(x)
 
+
+def print_model_summary(
+    model: nn.Module,
+    input_shape: tuple[int, ...],
+    device: str | torch.device = "cpu",
+) -> None:
+    summary(model, input_size=input_shape, device=str(device))
+
+
+if __name__ == "__main__":
+    default_model = AdamWellcomeCNN1D(in_channels=1, num_classes=3)
+    print_model_summary(default_model, input_shape=(1, 1, 512))
