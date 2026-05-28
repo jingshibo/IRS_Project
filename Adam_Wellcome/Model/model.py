@@ -30,16 +30,18 @@ class AdamWellcomeCNN1D(nn.Module):
         *,
         in_channels: int,
         num_classes: int,
-        channels: tuple[int, int, int, int] = (32, 64, 128, 256),
-        kernel_sizes: tuple[int, int, int, int] = (7, 5, 5, 3),
-        strides: tuple[int, int, int, int] = (1, 1, 1, 1),
-        dropout: float = 0.1,
+        channels: tuple[int, ...] = (32, 64, 128, 256),
+        kernel_sizes: tuple[int, ...] = (5, 5, 3, 3),
+        strides: tuple[int, ...] = (2, 2, 1, 1),
+        dropout: float = 0,
         negative_slope: float = 0.05,
-        classifier_hidden: int = 256,
+        classifier_hidden: int = 128,
     ):
         super().__init__()
-        if len(channels) != 4 or len(kernel_sizes) != 4 or len(strides) != 4:
-            raise ValueError("channels, kernel_sizes, and strides must all have length 4")
+        if not channels:
+            raise ValueError("channels must contain at least one convolution block")
+        if not (len(channels) == len(kernel_sizes) == len(strides)):
+            raise ValueError("channels, kernel_sizes, and strides must have the same length")
 
         blocks = []
         current_in = in_channels
@@ -57,7 +59,7 @@ class AdamWellcomeCNN1D(nn.Module):
             current_in = out_channels
 
         self.features = nn.Sequential(*blocks)
-        self.pool = nn.AdaptiveAvgPool1d(1)
+        # self.pool = nn.AdaptiveAvgPool1d(1)
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.LazyLinear(classifier_hidden),
@@ -68,7 +70,7 @@ class AdamWellcomeCNN1D(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
-        x = self.pool(x)
+        # x = self.pool(x)
         return self.classifier(x)
 
 
@@ -81,5 +83,5 @@ def print_model_summary(
 
 
 if __name__ == "__main__":
-    default_model = AdamWellcomeCNN1D(in_channels=1, num_classes=3)
-    print_model_summary(default_model, input_shape=(1, 1, 512))
+    default_model = AdamWellcomeCNN1D(in_channels=1, num_classes=50)
+    print_model_summary(default_model, input_shape=(128, 1, 200))

@@ -7,7 +7,15 @@ from .preprocessing import (
 )
 from .plotting import (
     plot_all_liquids,
+    plot_concentrations_by_liquid_overlay,
     plot_confusion_matrix,
+    plot_liquids_by_concentration,
+    plot_liquids_by_concentration_overlay,
+    plot_liquids_by_concentration_stats_overlay,
     plot_liquid_representatives,
+    plot_selected_liquids_concentration_overlay,
+    plot_selected_concentrations_by_liquid,
+    plot_selected_concentrations_overlay,
+    plot_selected_concentrations_stats_overlay,
     select_representative_trace,
 )
