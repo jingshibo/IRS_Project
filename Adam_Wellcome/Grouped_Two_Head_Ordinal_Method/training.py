@@ -46,14 +46,19 @@ class GroupedOrdinalConfig:
     batch_size: int = 32
     lr: float = 1e-3
     weight_decay: float = 1e-2
-    liquid_label_smoothing: float = 0.05
+    liquid_label_smoothing: float = 0.3
     concentration_loss_weight: float = 1.0
     strict_ordinal: bool = False
     device: Optional[str] = None
     num_workers: int = 0
     verbose: bool = True
     use_lr_scheduler: bool = True
+    lr_scheduler_name: str = "cosine"  ## plateau or cosine
     scheduler_eta_min: float = 1e-5
+    plateau_factor: float = 0.5
+    plateau_patience: int = 100
+    plateau_threshold: float = 1e-4
+    plateau_min_lr: float = 1e-5
     use_test_early_stopping: bool = True
     early_stopping_metric: str = "sample_joint_acc"
     early_stopping_patience: int = 100
@@ -133,6 +138,16 @@ class GroupedOrdinalTrainer:
             raise ValueError("concentration_loss_weight must be > 0")
         if not isinstance(self.config.strict_ordinal, bool):
             raise ValueError("strict_ordinal must be a boolean")
+        if self.config.lr_scheduler_name.lower() not in {"cosine", "plateau"}:
+            raise ValueError("lr_scheduler_name must be 'cosine' or 'plateau'")
+        if not 0.0 < self.config.plateau_factor < 1.0:
+            raise ValueError("plateau_factor must be in the range (0, 1)")
+        if self.config.plateau_patience <= 0:
+            raise ValueError("plateau_patience must be >= 1")
+        if self.config.plateau_threshold < 0:
+            raise ValueError("plateau_threshold must be >= 0")
+        if self.config.plateau_min_lr < 0:
+            raise ValueError("plateau_min_lr must be >= 0")
         if self.config.early_stopping_metric.lower() not in {
             "measurement_joint_acc",
             "sample_joint_acc",
@@ -200,14 +215,27 @@ class GroupedOrdinalTrainer:
     def _create_lr_scheduler(
         self,
         optimizer: torch.optim.Optimizer,
-    ) -> Optional[torch.optim.lr_scheduler.LRScheduler]:
+    ) -> Optional[torch.optim.lr_scheduler.LRScheduler | torch.optim.lr_scheduler.ReduceLROnPlateau]:
         if not self.config.use_lr_scheduler:
             return None
-        return torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=self.config.epochs,
-            eta_min=self.config.scheduler_eta_min,
-        )
+
+        scheduler_name = self.config.lr_scheduler_name.lower()
+        if scheduler_name == "cosine":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=self.config.epochs,
+                eta_min=self.config.scheduler_eta_min,
+            )
+        if scheduler_name == "plateau":
+            return torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode="max",
+                factor=self.config.plateau_factor,
+                patience=self.config.plateau_patience,
+                threshold=self.config.plateau_threshold,
+                min_lr=self.config.plateau_min_lr,
+            )
+        raise ValueError("Unsupported lr_scheduler_name")
 
     def _run_train_epoch(
         self,
@@ -367,8 +395,6 @@ class GroupedOrdinalTrainer:
                 ordinal_criterion,
                 optimizer,
             )
-            if scheduler is not None:
-                scheduler.step()
 
             (
                 measurement_joint_acc,
@@ -410,6 +436,12 @@ class GroupedOrdinalTrainer:
                 "sample_concentration_acc": sample_concentration_acc,
             }
             current_score = float(score_map[stop_metric])
+
+            if scheduler is not None:
+                if self.config.lr_scheduler_name.lower() == "plateau":
+                    scheduler.step(current_score)
+                else:
+                    scheduler.step()
 
             if self.config.verbose:
                 lr = optimizer.param_groups[0]["lr"]

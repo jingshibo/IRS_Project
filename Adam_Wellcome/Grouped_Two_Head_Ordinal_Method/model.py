@@ -11,12 +11,13 @@ def _conv_block(
     *,
     kernel_size: int,
     stride: int,
+    dilation: int,
     dropout: float,
     negative_slope: float,
 ) -> nn.Sequential:
-    padding = kernel_size // 2
+    padding = ((stride - 1) + dilation * (kernel_size - 1)) // 2
     return nn.Sequential(
-        nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding),
+        nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, dilation=dilation, padding=padding),
         nn.BatchNorm1d(out_channels),
         nn.LeakyReLU(negative_slope=negative_slope, inplace=True),
         nn.MaxPool1d(kernel_size=2, stride=2),
@@ -34,7 +35,8 @@ class GroupedOrdinalAdamWellcomeCNN1D(nn.Module):
         channels: tuple[int, ...] = (32, 64, 128, 256),
         kernel_sizes: tuple[int, ...] = (5, 5, 3, 3),
         strides: tuple[int, ...] = (2, 2, 1, 1),
-        dropout: float = 0.3,
+        dilations: tuple[int, ...] = (2, 2, 1, 1),
+        dropout: float = 0.1,
         negative_slope: float = 0.05,
         classifier_hidden: int = 128,
         strict_ordinal: bool = False,
@@ -49,13 +51,14 @@ class GroupedOrdinalAdamWellcomeCNN1D(nn.Module):
 
         blocks = []
         current_in = in_channels
-        for out_channels, kernel_size, stride in zip(channels, kernel_sizes, strides):
+        for out_channels, kernel_size, stride, dilation in zip(channels, kernel_sizes, strides, dilations):
             blocks.append(
                 _conv_block(
                     current_in,
                     out_channels,
                     kernel_size=kernel_size,
                     stride=stride,
+                    dilation=dilation,
                     dropout=dropout,
                     negative_slope=negative_slope,
                 )

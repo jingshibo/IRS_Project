@@ -86,9 +86,12 @@ trainer = training.GroupedOrdinalTrainer(
     training.GroupedOrdinalConfig(
         epochs=1000,
         batch_size=128,
-        lr=1e-3,
-        weight_decay=1e-4,
+        lr=2e-3,
+        weight_decay=5e-4,
         verbose=True,
+        lr_scheduler_name="plateau",
+        plateau_factor=0.5,
+        plateau_patience=100,
         concentration_loss_weight=2,
         strict_ordinal=False,
         use_test_early_stopping=True,
@@ -116,3 +119,6 @@ plot_grouped_recall_matrix_with_numbers(
     matrix_name="sample",
     liquid_order=liquid_order,
 )
+
+##
+
