@@ -4,8 +4,6 @@ import importlib
 import sys
 from pathlib import Path
 
-import numpy as np
-
 
 ADAM_WELLCOME_DIR = Path(__file__).resolve().parents[1]
 if str(ADAM_WELLCOME_DIR) not in sys.path:
@@ -19,14 +17,13 @@ from Functions import (  # noqa: E402
     downsample_nested_data,
     load_liquid_folder,
 )
-from Repeated_Measurements import dataset  # noqa: E402
-from Grouped_Two_Head_Ordinal_Method import training  # noqa: E402
-from Grouped_Two_Head_Ordinal_Method.evaluation import (  # noqa: E402
-    plot_grouped_recall_matrix,
+from Grouped_Independent_Models_Method import training  # noqa: E402
+from Grouped_Independent_Models_Method.evaluation import (  # noqa: E402
     plot_grouped_recall_matrix_with_numbers,
-    print_grouped_ordinal_summary,
-    summarize_grouped_ordinal_results,
+    print_independent_models_summary,
+    summarize_independent_models_results,
 )
+from Repeated_Measurements import dataset  # noqa: E402
 
 
 DATA_DIR = Path(r"/home/shibojing/data/adam wellcome")
@@ -50,7 +47,6 @@ downsampled_difference_data = downsample_nested_data(
     ratio=100,
 )
 
-##
 data = dataset.build_repeated_measurement_dataset(
     downsampled_difference_data,
     channel_indices=(9,),
@@ -74,7 +70,7 @@ for split in cv_splits:
 
 importlib.reload(training)
 
-## Edit the grouped concentration ranges here.
+# Edit the grouped concentration ranges here.
 # Format: (group_name, start_exponent, end_exponent), corresponding to 10^-start .. 10^-end.
 concentration_group_ranges = (
     ("high", 1, 3),
@@ -82,23 +78,22 @@ concentration_group_ranges = (
     ("low", 8, 10),
 )
 
-trainer = training.GroupedOrdinalTrainer(
-    training.GroupedOrdinalConfig(
+##
+trainer = training.IndependentModelsTrainer(
+    training.IndependentModelsConfig(
         epochs=1000,
         batch_size=128,
-        lr=2e-3,
+        lr=1e-3,
         weight_decay=5e-4,
         verbose=True,
-        lr_scheduler_name="plateau",
+        lr_scheduler_name="cosine",
         plateau_factor=0.5,
         plateau_patience=100,
-        concentration_loss_weight=1,
-        use_auxiliary_joint_loss=True,
-        strict_ordinal=False,
-        feature_block_type="plain",
-        se_reduction=4,
+        liquid_label_smoothing=0.3,
+        concentration_label_smoothing=0.3,
         use_test_early_stopping=True,
-        early_stopping_metric="sample_joint_acc",
+        liquid_early_stopping_metric="sample_liquid_acc",
+        concentration_early_stopping_metric="sample_concentration_acc",
         early_stopping_patience=300,
         concentration_group_ranges=concentration_group_ranges,
     )
@@ -109,17 +104,15 @@ for split in cv_splits:
     print(f"Fold {split.fold + 1}/{len(cv_splits)}")
     fold_results.append(trainer.fit(split))
 
-result_summary = summarize_grouped_ordinal_results(fold_results)
-print_grouped_ordinal_summary(result_summary)
+result_summary = summarize_independent_models_results(fold_results)
+print_independent_models_summary(result_summary)
 
 
 # Set the liquid display order here when plotting the grouped recall matrix.
-liquid_order = ["Abau", "ECOLI", "FS1061", "FS1430", "FS1431", ]
+liquid_order = ["Abau", "ECOLI", "FS1061", "FS1430", "FS1431"]
 
-# plot_grouped_recall_matrix(result_summary, matrix_name="sample", liquid_order=liquid_order)
 plot_grouped_recall_matrix_with_numbers(
     result_summary,
     matrix_name="sample",
     liquid_order=liquid_order,
 )
-

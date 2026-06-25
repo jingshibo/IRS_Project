@@ -21,11 +21,13 @@ class SignalDataset(Dataset):
         x: np.ndarray,
         liquid_y: np.ndarray,
         concentration_y: np.ndarray,
+        joint_y: np.ndarray,
         ordinal_targets: np.ndarray,
     ):
         self.x = torch.as_tensor(x, dtype=torch.float32)
         self.liquid_y = torch.as_tensor(liquid_y, dtype=torch.long)
         self.concentration_y = torch.as_tensor(concentration_y, dtype=torch.long)
+        self.joint_y = torch.as_tensor(joint_y, dtype=torch.long)
         self.ordinal_targets = torch.as_tensor(ordinal_targets, dtype=torch.float32)
 
     def __len__(self) -> int:
@@ -36,6 +38,7 @@ class SignalDataset(Dataset):
             self.x[index],
             self.liquid_y[index],
             self.concentration_y[index],
+            self.joint_y[index],
             self.ordinal_targets[index],
         )
 
@@ -48,7 +51,12 @@ class GroupedOrdinalConfig:
     weight_decay: float = 1e-2
     liquid_label_smoothing: float = 0.3
     concentration_loss_weight: float = 1.0
+    use_auxiliary_joint_loss: bool = False
+    auxiliary_joint_loss_weight: float = 0.1 #
+    auxiliary_joint_label_smoothing: float = 0.1
     strict_ordinal: bool = False
+    feature_block_type: str = "plain"
+    se_reduction: int = 8
     device: Optional[str] = None
     num_workers: int = 0
     verbose: bool = True
@@ -136,8 +144,20 @@ class GroupedOrdinalTrainer:
             raise ValueError("liquid_label_smoothing must be in the range [0, 1)")
         if self.config.concentration_loss_weight <= 0:
             raise ValueError("concentration_loss_weight must be > 0")
+        if not isinstance(self.config.use_auxiliary_joint_loss, bool):
+            raise ValueError("use_auxiliary_joint_loss must be a boolean")
+        if self.config.auxiliary_joint_loss_weight < 0:
+            raise ValueError("auxiliary_joint_loss_weight must be >= 0")
+        if self.config.use_auxiliary_joint_loss and self.config.auxiliary_joint_loss_weight <= 0:
+            raise ValueError("auxiliary_joint_loss_weight must be > 0 when use_auxiliary_joint_loss is True")
+        if not 0.0 <= self.config.auxiliary_joint_label_smoothing < 1.0:
+            raise ValueError("auxiliary_joint_label_smoothing must be in the range [0, 1)")
         if not isinstance(self.config.strict_ordinal, bool):
             raise ValueError("strict_ordinal must be a boolean")
+        if self.config.feature_block_type.lower() not in {"plain", "residual_se"}:
+            raise ValueError("feature_block_type must be 'plain' or 'residual_se'")
+        if self.config.se_reduction <= 0:
+            raise ValueError("se_reduction must be >= 1")
         if self.config.lr_scheduler_name.lower() not in {"cosine", "plateau"}:
             raise ValueError("lr_scheduler_name must be 'cosine' or 'plateau'")
         if not 0.0 < self.config.plateau_factor < 1.0:
@@ -243,30 +263,44 @@ class GroupedOrdinalTrainer:
         loader: DataLoader,
         liquid_criterion: nn.Module,
         ordinal_criterion: nn.Module,
+        joint_criterion: nn.Module,
         optimizer: torch.optim.Optimizer,
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, float, float, float]:
         model.train()
         total_loss = 0.0
         total_liquid_correct = 0
         total_concentration_correct = 0
+        total_joint_correct = 0
         total_items = 0
+        use_auxiliary_joint_loss = self.config.use_auxiliary_joint_loss
 
-        for x_batch, liquid_y, concentration_y, ordinal_target in loader:
+        for x_batch, liquid_y, concentration_y, joint_y, ordinal_target in loader:
             x_batch = x_batch.to(self.device)
             liquid_y = liquid_y.to(self.device)
             concentration_y = concentration_y.to(self.device)
+            joint_y = joint_y.to(self.device)
             ordinal_target = ordinal_target.to(self.device)
 
             optimizer.zero_grad(set_to_none=True)
-            liquid_logits, concentration_logits = model(x_batch)
+            if use_auxiliary_joint_loss:
+                liquid_logits, concentration_logits, joint_logits = model(x_batch, return_joint_logits=True)
+            else:
+                liquid_logits, concentration_logits = model(x_batch)
+                joint_logits = None
             liquid_loss = liquid_criterion(liquid_logits, liquid_y)
             ordinal_loss = ordinal_criterion(concentration_logits, ordinal_target)
             loss = liquid_loss + self.config.concentration_loss_weight * ordinal_loss
+            if joint_logits is not None:
+                joint_loss = joint_criterion(joint_logits, joint_y)
+                loss = loss + self.config.auxiliary_joint_loss_weight * joint_loss
             loss.backward()
             optimizer.step()
 
             liquid_pred = torch.argmax(liquid_logits, dim=1)
             concentration_pred = torch.sum(concentration_logits > 0.0, dim=1)
+            if joint_logits is not None:
+                joint_pred = torch.argmax(joint_logits, dim=1)
+                total_joint_correct += int((joint_pred == joint_y).sum().item())
             batch_size = int(x_batch.size(0))
             total_loss += float(loss.item()) * batch_size
             total_liquid_correct += int((liquid_pred == liquid_y).sum().item())
@@ -277,6 +311,7 @@ class GroupedOrdinalTrainer:
             total_loss / max(total_items, 1),
             total_liquid_correct / max(total_items, 1),
             total_concentration_correct / max(total_items, 1),
+            total_joint_correct / max(total_items, 1) if use_auxiliary_joint_loss else 0.0,
         )
 
     @torch.no_grad()
@@ -291,6 +326,7 @@ class GroupedOrdinalTrainer:
                 x,
                 np.zeros(len(x), dtype=np.int64),
                 np.zeros(len(x), dtype=np.int64),
+                np.zeros(len(x), dtype=np.int64),
                 np.zeros((len(x), 1), dtype=np.float32),
             ),
             batch_size=self.config.batch_size,
@@ -299,7 +335,7 @@ class GroupedOrdinalTrainer:
         )
         liquid_probabilities = []
         concentration_logits = []
-        for x_batch, _, _, _ in loader:
+        for x_batch, _, _, _, _ in loader:
             liquid_logits, ordinal_logits = model(x_batch.to(self.device))
             liquid_probabilities.append(torch.softmax(liquid_logits, dim=1).cpu().numpy())
             concentration_logits.append(ordinal_logits.cpu().numpy())
@@ -342,6 +378,7 @@ class GroupedOrdinalTrainer:
         y_test_liquid = np.asarray([liquid_label_to_idx[label] for label in test_liquids], dtype=np.int64)
         y_train_concentration = np.asarray([concentration_label_to_idx[label] for label in train_concentrations], dtype=np.int64)
         y_test_concentration = np.asarray([concentration_label_to_idx[label] for label in test_concentrations], dtype=np.int64)
+        y_train_joint = np.asarray([joint_label_to_idx[label] for label in train_joint_labels], dtype=np.int64)
 
         ordinal_train_targets = _ordinal_targets(y_train_concentration, num_classes=len(concentration_labels))
 
@@ -350,6 +387,7 @@ class GroupedOrdinalTrainer:
                 split.x_train,
                 y_train_liquid,
                 y_train_concentration,
+                y_train_joint,
                 ordinal_train_targets,
             ),
             batch_size=self.config.batch_size,
@@ -359,12 +397,17 @@ class GroupedOrdinalTrainer:
 
         model = GroupedOrdinalAdamWellcomeCNN1D(
             in_channels=int(split.x_train.shape[1]),
+            input_length=int(split.x_train.shape[2]),
             num_liquids=len(liquid_labels),
             num_concentration_groups=len(concentration_labels),
+            num_joint_classes=len(joint_labels) if self.config.use_auxiliary_joint_loss else None,
+            feature_block_type=self.config.feature_block_type.lower(),
+            se_reduction=self.config.se_reduction,
             strict_ordinal=self.config.strict_ordinal,
         ).to(self.device)
         liquid_criterion = nn.CrossEntropyLoss(label_smoothing=self.config.liquid_label_smoothing)
         ordinal_criterion = nn.BCEWithLogitsLoss()
+        joint_criterion = nn.CrossEntropyLoss(label_smoothing=self.config.auxiliary_joint_label_smoothing)
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=self.config.lr,
@@ -376,6 +419,7 @@ class GroupedOrdinalTrainer:
             "train_loss": [],
             "train_liquid_acc": [],
             "train_concentration_acc": [],
+            "train_auxiliary_joint_acc": [],
             "stop_measurement_joint_acc": [],
             "stop_sample_joint_acc": [],
         }
@@ -388,11 +432,12 @@ class GroupedOrdinalTrainer:
         y_measurement_true = np.asarray([joint_label_to_idx[label] for label in test_joint_labels], dtype=np.int64)
 
         for epoch_idx in range(self.config.epochs):
-            train_loss, train_liquid_acc, train_concentration_acc = self._run_train_epoch(
+            train_loss, train_liquid_acc, train_concentration_acc, train_auxiliary_joint_acc = self._run_train_epoch(
                 model,
                 train_loader,
                 liquid_criterion,
                 ordinal_criterion,
+                joint_criterion,
                 optimizer,
             )
 
@@ -424,6 +469,7 @@ class GroupedOrdinalTrainer:
             history["train_loss"].append(train_loss)
             history["train_liquid_acc"].append(train_liquid_acc)
             history["train_concentration_acc"].append(train_concentration_acc)
+            history["train_auxiliary_joint_acc"].append(train_auxiliary_joint_acc)
             history["stop_measurement_joint_acc"].append(measurement_joint_acc)
             history["stop_sample_joint_acc"].append(sample_joint_acc)
 
@@ -450,6 +496,7 @@ class GroupedOrdinalTrainer:
                     f"lr={lr:.6g} | train_loss={train_loss:.4f} "
                     f"train_liquid_acc={train_liquid_acc:.4f} "
                     f"train_group_acc={train_concentration_acc:.4f} "
+                    f"train_aux_joint_acc={train_auxiliary_joint_acc:.4f} "
                     f"stop_joint_sample_acc={sample_joint_acc:.4f}"
                 )
 

@@ -125,7 +125,7 @@ plot_options = {
     "classification_examples": False,
     "certain_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": True,
+    "random_sample_overview": False,
     "normalized_data_inspection": False,
 }
 
