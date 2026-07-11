@@ -10,12 +10,16 @@ from IRS_Insecticide_Residual.Feature_Implementation.Functions import Feature_Ex
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Functions import Viewing
 
+
+
 ## load data
 excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 df = pd.read_excel(excel_path, sheet_name=0)
 label_col = df.columns[0]
+df_clean, removed_zero_sample_indices = Preprocessing.remove_zero_samples(df, label_col=df.columns[0], reset_index=True)
+print("Removed all-zero sample indices:", removed_zero_sample_indices)
 class_order = ("LOW", "TARGET", "HIGH")
-categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df.groupby(label_col)}
+categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df_clean.groupby(label_col)}
 
 
 ## preprocessing

@@ -35,12 +35,12 @@ def _histogram_percentile(x: np.ndarray, q: float, bins: int = 128) -> np.float3
 ##  detect peaks and dips in a single sample (1D signal)
 def detect_peaks_and_dips(
         signal,
-        min_prominence_frac=0.08,
+        min_prominence_frac=0.10,
         min_distance=30,
         min_width=3,
         percentile_method="histogram",
         histogram_bins=50,
-        general_peak_rel_height=0.5,
+        general_peak_rel_height=0.5, # the relative height (of its prominence) at which the peak width is measured
         main_peak_rel_height=0.9,
         dip_rel_height=0.5,
 ):
@@ -83,7 +83,7 @@ def detect_peaks_and_dips(
         "peak_prominences": peak_props["prominences"],
         "peak_widths": peak_width_result[0],
         "peak_width_heights": peak_width_result[1],
-        "peak_left_ips": peak_width_result[2],
+        "peak_left_ips": peak_width_result[2], # ips: intersection positions
         "peak_right_ips": peak_width_result[3],
         "main_peak_widths": main_peak_width_result[0],
         "main_peak_width_heights": main_peak_width_result[1],
@@ -505,7 +505,6 @@ def calculate_doublet_features(
         features[f"{prefix}_dip_depth"] = dip_depth
         features[f"{prefix}_dip_depth_norm"] = dip_depth_norm
         features[f"{prefix}_dip_relative_position"] = dip_relative_position
-        features[f"{prefix}_doublet_score"] = doublet_score
 
     # comparing different bands
     features["band1_to_band2_main_peak_distance"] = 0.0
@@ -736,8 +735,7 @@ def calculate_doublet_area_features(
             )
 
         # For dips, prominence is measured on -signal.
-        # So local baseline is approximately:
-        # baseline = dip_amp + dip_prom
+        # So local baseline is approximately: baseline = dip_amp + dip_prom
         dip_baseline = dip_amp + dip_prom
 
         dip_area = _positive_area(
@@ -757,7 +755,7 @@ def calculate_doublet_area_features(
         # This is not limited to the dip_width only.
         # It measures the whole valley between the two selected peaks.
         valley_baseline = min(left_amp, right_amp)
-
+      
         doublet_valley_area = _positive_area(
             x=signal,
             start_idx=left_f,

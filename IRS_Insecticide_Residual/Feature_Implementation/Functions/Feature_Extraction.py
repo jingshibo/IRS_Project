@@ -13,10 +13,12 @@ def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
     # _safe_divide receives either [N] vs [N], or [N, L] vs [N, 1] as the input.
     zero_mask = np.abs(denominator) <= _EPS
     if np.any(zero_mask):
+        zero_positions = np.argwhere(zero_mask)
         raise ValueError(
             "_safe_divide encountered near-zero denominator: "
             f"min_abs={np.min(np.abs(denominator))}, "
-            f"count={np.count_nonzero(zero_mask)}"
+            f"count={np.count_nonzero(zero_mask)}, "
+            f"positions={zero_positions.tolist()}"
         )
     return numerator / denominator
 
@@ -81,7 +83,7 @@ def _channel_feature_block(channel_values: np.ndarray, channel_name: str) -> Tup
     # Low centroid → energy concentrated at low bins / High centroid → energy at high bins → rapid oscillations
     spectral_centroid = _safe_divide(np.sum(freq_amplitude * freq_idx[None, :], axis=1), magnitude_sum)
 
-    # spectral bandwidth (essentially variance around centroid), then normalized as fractional stddev
+    # spectral bandwidth (essentially variance around centroid), then normalized as fractional std dev
     # Bandwidth	Low	-> Energy concentrated near centroid (simple structure)
     # Bandwidth	High ->	Energy spread across bins (complex / noisy structure)
     spectral_bandwidth_var = _safe_divide(np.sum(freq_amplitude * (freq_idx[None, :] - spectral_centroid[:, None]) ** 2,
@@ -167,5 +169,4 @@ def extract_feature_matrix(
 
     feature_matrix = np.concatenate(feature_blocks, axis=1).astype(np.float32, copy=False)
     return feature_matrix, feature_names
-
 

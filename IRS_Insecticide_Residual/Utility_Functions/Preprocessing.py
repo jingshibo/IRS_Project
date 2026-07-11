@@ -7,6 +7,28 @@ from sklearn.preprocessing import StandardScaler
 FLOAT_DTYPE = np.float32
 
 
+def remove_zero_samples(df: pd.DataFrame, label_col=None, reset_index: bool = False):
+    """
+    Remove samples whose non-label values are all zero.
+
+    Returns
+    -------
+    cleaned_df:
+        DataFrame after removing all-zero samples.
+    removed_indices:
+        Original DataFrame indices of removed samples.
+    """
+    value_df = df.drop(columns=[label_col]) if label_col is not None else df
+    zero_mask = value_df.eq(0).all(axis=1)
+    removed_indices = df.index[zero_mask].tolist()
+    cleaned_df = df.loc[~zero_mask].copy()
+
+    if reset_index:
+        cleaned_df = cleaned_df.reset_index(drop=True)
+
+    return cleaned_df, removed_indices
+
+
 def compute_mean_std_stats(grouped_dict):
     stats = {}
     for key, group in grouped_dict.items():

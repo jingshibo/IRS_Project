@@ -3,17 +3,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from IRS_Insecticide_Residual.Feature_Implementation.Functions import Peak_Dip_Features, Plotting
-from Utility_Functions import Preprocessing
+from IRS_Insecticide_Residual.Feature_Implementation.Functions import Derivative_Features, Peak_Dip_Features, Plotting
+from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 
 ## load data
-EXCEL_PATH = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
-df = pd.read_excel(EXCEL_PATH, sheet_name=0)
+excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
+df = pd.read_excel(excel_path, sheet_name=0)
 label_col = df.columns[0]
-categorized_dict = {
-    key: group.drop(columns=[label_col]).reset_index(drop=True)
-    for key, group in df.groupby(label_col)
-}
+df_clean, removed_zero_sample_indices = Preprocessing.remove_zero_samples(df, label_col=df.columns[0], reset_index=True)
+print("Removed all-zero sample indices:", removed_zero_sample_indices)
+class_order = ("LOW", "TARGET", "HIGH")
+categorized_dict = {key: group.drop(columns=[label_col]).reset_index(drop=True) for key, group in df_clean.groupby(label_col)}
+
 
 ## preprocesing
 signal_segments = ((0, 1000), (1800, 3500))
@@ -90,7 +91,7 @@ fig, axes = plt.subplots(4, 5, figsize=(20, 12))
 axes = axes.ravel()
 
 for ax, sample_idx in zip(axes, sample_indices):
-    signal = x_all[sample_idx, 0, :]
+    signal = x_all[sample_idx, 1, :]
     Plotting.plot_peak_dip_summary(
         ax=ax,
         signal=signal,
@@ -124,7 +125,7 @@ fig.tight_layout(rect=(0, 0, 1, 0.96))
 plt.show()
 
 
-## feature calculation
+## doublet feature calculation
 sample_signal = x_all[1698, 0, :]
 sample_peaks_and_dips = Peak_Dip_Features.detect_peaks_and_dips(
     sample_signal,
@@ -146,3 +147,14 @@ doublet_features = Peak_Dip_Features.calculate_doublet_features(sample_peak_dip_
 area_features = Peak_Dip_Features.calculate_doublet_area_features(sample_peak_dip_pairs, sample_signal)
 
 
+## derivative feature calculation
+sample_first_derivative = x_all[1698, 1, :]
+derivative_features = Derivative_Features.calculate_first_derivative_features(
+    selected_pairs=sample_peak_dip_pairs,
+    signal=sample_signal,
+    first_derivative=sample_first_derivative,
+    detected_peak_dip=sample_peaks_and_dips,
+    window_radius=5,
+    include_inter_band=True,
+    include_broad_transition=True,
+)
