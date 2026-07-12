@@ -3,6 +3,85 @@ from typing import Optional
 import numpy as np
 
 
+# Slope-only feature names for the main peak width reference line.
+_MAIN_PEAK_SLOPE_KEYS = [
+    "left_slope",  # slope from left width intersection to the main peak
+    "right_slope",  # slope from the main peak to right width intersection
+    "slope_balance",  # ratio of smaller absolute side slope to larger absolute side slope
+    "signed_slope_imbalance",  # signed left-vs-right slope difference normalized by total slope magnitude
+]
+
+
+# Slope-only feature names comparing the left and right peak-to-dip sides of a doublet.
+_DIP_TO_PEAK_PAIR_KEYS = [
+    "left_dip_to_peak_slope",  # amplitude drop/rise rate between left peak and middle dip
+    "right_dip_to_peak_slope",  # amplitude rise/drop rate between middle dip and right peak
+    "dip_to_peak_slope_balance",  # ratio of smaller absolute dip-to-peak slope to larger absolute slope
+    "dip_to_peak_signed_slope_imbalance",  # signed left-vs-right dip-to-peak slope difference
+]
+
+
+# Shared feature names for local first-derivative summaries around peaks/dip-to-peak segments.
+_FIRST_DERIVATIVE_SUMMARY_KEYS = [
+    "max_abs_first_derivative",  # strongest local first-derivative magnitude
+    "mean_abs_first_derivative",  # average absolute first derivative in the segment
+    "std_first_derivative",  # variability of first-derivative values in the segment
+    "zero_crossing_count",  # number of sign changes in non-near-zero derivative values
+    "zero_crossing_rate",  # zero-crossing count normalized by segment length
+    "max_abs_first_derivative_position",  # absolute index where first-derivative magnitude is largest
+    "max_abs_first_derivative_relative_position",  # relative segment position of largest derivative magnitude
+    "first_derivative_energy",  # sum of squared first-derivative values in the segment
+    "max_positive_first_derivative",  # largest positive first-derivative value
+    "max_positive_first_derivative_position",  # absolute index of largest positive first derivative
+    "max_positive_first_derivative_relative_position",  # relative segment position of largest positive derivative
+    "min_negative_first_derivative",  # most negative first-derivative value
+    "min_negative_first_derivative_position",  # absolute index of most negative first derivative
+    "min_negative_first_derivative_relative_position",  # relative segment position of most negative derivative
+]
+
+
+# Shared feature names for first-derivative transition segments between two frequency positions.
+_FIRST_DERIVATIVE_SEGMENT_KEYS = [
+    "exists",  # flag indicating the segment was found and measured
+    "start_freq",  # start index/frequency of the segment
+    "end_freq",  # end index/frequency of the segment
+    "length",  # absolute distance between start and end positions
+    "net_amplitude_change",  # end amplitude minus start amplitude
+    "slope",  # net amplitude change divided by segment length
+    "mean_first_derivative",  # signed mean first derivative over the segment
+    "mean_abs_first_derivative",  # mean absolute first derivative over the segment
+    "std_first_derivative",  # standard deviation of first-derivative values
+    "zero_crossing_count",  # number of sign changes in non-near-zero derivative values
+    "zero_crossing_rate",  # zero-crossing count normalized by segment length
+    "max_abs_first_derivative",  # strongest first-derivative magnitude in the segment
+    "max_abs_first_derivative_position",  # absolute index of strongest derivative magnitude
+    "max_abs_first_derivative_relative_position",  # relative segment position of strongest derivative magnitude
+    "first_derivative_energy",  # sum of squared first-derivative values
+    "max_positive_first_derivative",  # largest positive first-derivative value
+    "max_positive_first_derivative_position",  # absolute index of largest positive derivative
+    "max_positive_first_derivative_relative_position",  # relative segment position of largest positive derivative
+    "min_negative_first_derivative",  # most negative first-derivative value
+    "min_negative_first_derivative_position",  # absolute index of most negative derivative
+    "min_negative_first_derivative_relative_position",  # relative segment position of most negative derivative
+    "positive_derivative_area",  # sum of positive first-derivative values
+    "negative_derivative_area",  # sum of absolute negative first-derivative values
+]
+
+
+# Compact curvature feature names for second-derivative segments.
+_SECOND_DERIVATIVE_SEGMENT_KEYS = [
+    "second_derivative_exists",  # flag indicating the curvature segment was found and measured
+    "mean_second_derivative",  # signed mean curvature over the segment
+    "mean_abs_second_derivative",  # average curvature magnitude over the segment
+    "max_abs_second_derivative",  # strongest curvature magnitude in the segment
+    "second_derivative_energy",  # sum of squared second-derivative values
+    "max_positive_second_derivative",  # strongest positive curvature value
+    "min_negative_second_derivative",  # strongest negative curvature value
+    "positive_second_derivative_area",  # sum of positive second-derivative values
+    "negative_second_derivative_area",  # sum of absolute negative second-derivative values
+]
+
+
 def _safe_index(idx: float, n: int) -> int:
     """Convert a float index to an integer index within a valid range."""
     return int(np.clip(round(float(idx)), 0, n - 1))
@@ -45,6 +124,26 @@ def _prepare_signal_and_derivative(
         )
 
     return signal, first_derivative
+
+
+def _prepare_second_derivative(
+    signal: np.ndarray,
+    first_derivative: Optional[np.ndarray],
+    second_derivative: Optional[np.ndarray],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    signal, first_derivative = _prepare_signal_and_derivative(signal, first_derivative)
+    if second_derivative is None:
+        second_derivative = np.gradient(first_derivative).astype(np.float32)
+    else:
+        second_derivative = np.asarray(second_derivative, dtype=np.float32).ravel()
+
+    if signal.shape != second_derivative.shape:
+        raise ValueError(
+            "signal and second_derivative must have the same shape, "
+            f"got signal={signal.shape}, second_derivative={second_derivative.shape}"
+        )
+
+    return signal, first_derivative, second_derivative
 
 
 def _inter_band_endpoint(pair: dict, side: str) -> Optional[tuple[float, float]]:
@@ -136,7 +235,7 @@ def _derivative_extrema_location_summary(
     )
 
 
-def _add_segment_derivative_features(
+def _add_first_derivative_segment_features(
     features: dict,
     prefix: str,
     segment_name: str,
@@ -193,37 +292,96 @@ def _add_segment_derivative_features(
     features[f"{prefix}_{segment_name}_negative_derivative_area"] = np.float32(np.sum(np.maximum(-derivative_segment, 0.0)))
 
 
-def _add_empty_segment_derivative_features(features: dict, prefix: str, segment_name: str) -> None:
-    keys = [
-        "exists",
-        "start_freq",
-        "end_freq",
-        "length",
-        "net_amplitude_change",
-        "slope",
-        "mean_first_derivative",
-        "mean_abs_first_derivative",
-        "std_first_derivative",
-        "zero_crossing_count",
-        "zero_crossing_rate",
-        "max_abs_first_derivative",
-        "max_abs_first_derivative_position",
-        "max_abs_first_derivative_relative_position",
-        "first_derivative_energy",
-        "max_positive_first_derivative",
-        "max_positive_first_derivative_position",
-        "max_positive_first_derivative_relative_position",
-        "min_negative_first_derivative",
-        "min_negative_first_derivative_position",
-        "min_negative_first_derivative_relative_position",
-        "positive_derivative_area",
-        "negative_derivative_area",
-    ]
-    for key in keys:
+def _add_first_derivative_summary_features(
+    features: dict,
+    prefix: str,
+    segment_name: str,
+    first_derivative: np.ndarray,
+    start_idx: float,
+    end_idx: float,
+    eps: float,
+) -> None:
+    max_abs_d, mean_abs_d, energy_d = _abs_derivative_summary(
+        first_derivative,
+        start_idx,
+        end_idx,
+    )
+    max_positive_d, min_negative_d = _signed_derivative_summary(
+        first_derivative,
+        start_idx,
+        end_idx,
+    )
+    std_d, zc_count_d, zc_rate_d = _derivative_variability_summary(
+        first_derivative,
+        start_idx,
+        end_idx,
+        eps,
+    )
+    (
+        max_abs_pos_d,
+        max_abs_rel_pos_d,
+        max_positive_pos_d,
+        max_positive_rel_pos_d,
+        min_negative_pos_d,
+        min_negative_rel_pos_d,
+    ) = _derivative_extrema_location_summary(first_derivative, start_idx, end_idx)
+
+    features[f"{prefix}_{segment_name}_max_abs_first_derivative"] = np.float32(max_abs_d)
+    features[f"{prefix}_{segment_name}_mean_abs_first_derivative"] = np.float32(mean_abs_d)
+    features[f"{prefix}_{segment_name}_std_first_derivative"] = np.float32(std_d)
+    features[f"{prefix}_{segment_name}_zero_crossing_count"] = np.float32(zc_count_d)
+    features[f"{prefix}_{segment_name}_zero_crossing_rate"] = np.float32(zc_rate_d)
+    features[f"{prefix}_{segment_name}_max_abs_first_derivative_position"] = np.float32(max_abs_pos_d)
+    features[f"{prefix}_{segment_name}_max_abs_first_derivative_relative_position"] = np.float32(max_abs_rel_pos_d)
+    features[f"{prefix}_{segment_name}_first_derivative_energy"] = np.float32(energy_d)
+    features[f"{prefix}_{segment_name}_max_positive_first_derivative"] = np.float32(max_positive_d)
+    features[f"{prefix}_{segment_name}_max_positive_first_derivative_position"] = np.float32(max_positive_pos_d)
+    features[f"{prefix}_{segment_name}_max_positive_first_derivative_relative_position"] = np.float32(max_positive_rel_pos_d)
+    features[f"{prefix}_{segment_name}_min_negative_first_derivative"] = np.float32(min_negative_d)
+    features[f"{prefix}_{segment_name}_min_negative_first_derivative_position"] = np.float32(min_negative_pos_d)
+    features[f"{prefix}_{segment_name}_min_negative_first_derivative_relative_position"] = np.float32(min_negative_rel_pos_d)
+
+
+def _add_empty_first_derivative_segment_features(features: dict, prefix: str, segment_name: str) -> None:
+    for key in _FIRST_DERIVATIVE_SEGMENT_KEYS:
         features[f"{prefix}_{segment_name}_{key}"] = np.float32(0.0)
 
 
-def calculate_within_band_derivative_features(
+def _add_second_derivative_segment_features(
+    features: dict,
+    prefix: str,
+    segment_name: str,
+    start_idx: float,
+    end_idx: float,
+    second_derivative: np.ndarray,
+    eps: float,
+) -> None:
+    start, end = _segment_bounds(start_idx, end_idx, len(second_derivative))
+    segment = second_derivative[start:end + 1]
+    if segment.size == 0:
+        return
+
+    features[f"{prefix}_{segment_name}_second_derivative_exists"] = np.float32(1.0)
+    features[f"{prefix}_{segment_name}_mean_second_derivative"] = np.float32(np.mean(segment))
+    features[f"{prefix}_{segment_name}_mean_abs_second_derivative"] = np.float32(np.mean(np.abs(segment)))
+    features[f"{prefix}_{segment_name}_max_abs_second_derivative"] = np.float32(np.max(np.abs(segment)))
+    features[f"{prefix}_{segment_name}_second_derivative_energy"] = np.float32(np.sum(segment * segment))
+    features[f"{prefix}_{segment_name}_max_positive_second_derivative"] = np.float32(np.max(segment))
+    features[f"{prefix}_{segment_name}_min_negative_second_derivative"] = np.float32(np.min(segment))
+    features[f"{prefix}_{segment_name}_positive_second_derivative_area"] = np.float32(np.sum(np.maximum(segment, 0.0)))
+    features[f"{prefix}_{segment_name}_negative_second_derivative_area"] = np.float32(np.sum(np.maximum(-segment, 0.0)))
+
+
+def _add_empty_second_derivative_segment_features(
+    features: dict,
+    prefix: str,
+    segment_name: str,
+) -> None:
+    for key in _SECOND_DERIVATIVE_SEGMENT_KEYS:
+        features[f"{prefix}_{segment_name}_{key}"] = np.float32(0.0)
+
+
+def calculate_within_band_first_derivative_features(
     selected_pairs: list[dict],
     signal: np.ndarray,
     first_derivative: Optional[np.ndarray] = None,
@@ -232,6 +390,8 @@ def calculate_within_band_derivative_features(
 ) -> dict:
     """
     Calculate first-derivative shape features around selected band-wise peak/dip pairs.
+
+    This covers local main-peak shape and the two within-doublet dip-to-peak sides.
 
     Parameters
     ----------
@@ -256,58 +416,13 @@ def calculate_within_band_derivative_features(
 
     features = {}
 
-    default_keys = [
-        "main_peak_left_slope",
-        "main_peak_right_slope",
-        "main_peak_slope_balance",
-        "main_peak_signed_slope_imbalance",
-        "main_peak_max_abs_first_derivative",
-        "main_peak_mean_abs_first_derivative",
-        "main_peak_std_first_derivative",
-        "main_peak_zero_crossing_count",
-        "main_peak_zero_crossing_rate",
-        "main_peak_first_derivative_energy",
-        "main_peak_max_positive_first_derivative",
-        "main_peak_max_positive_first_derivative_position",
-        "main_peak_max_positive_first_derivative_relative_position",
-        "main_peak_min_negative_first_derivative",
-        "main_peak_min_negative_first_derivative_position",
-        "main_peak_min_negative_first_derivative_relative_position",
-        "main_peak_max_abs_first_derivative_position",
-        "main_peak_max_abs_first_derivative_relative_position",
-        "left_dip_to_peak_slope", # left peak
-        "right_dip_to_peak_slope", # right peak
-        "dip_to_peak_slope_balance",
-        "dip_to_peak_signed_slope_imbalance",
-        "left_dip_to_peak_max_abs_first_derivative",
-        "left_dip_to_peak_mean_abs_first_derivative",
-        "left_dip_to_peak_std_first_derivative",
-        "left_dip_to_peak_zero_crossing_count",
-        "left_dip_to_peak_zero_crossing_rate",
-        "left_dip_to_peak_first_derivative_energy",
-        "left_dip_to_peak_max_positive_first_derivative",
-        "left_dip_to_peak_max_abs_first_derivative_position",
-        "left_dip_to_peak_max_abs_first_derivative_relative_position",
-        "left_dip_to_peak_max_positive_first_derivative_position",
-        "left_dip_to_peak_max_positive_first_derivative_relative_position",
-        "left_dip_to_peak_min_negative_first_derivative",
-        "left_dip_to_peak_min_negative_first_derivative_position",
-        "left_dip_to_peak_min_negative_first_derivative_relative_position",
-        "right_dip_to_peak_max_abs_first_derivative",
-        "right_dip_to_peak_mean_abs_first_derivative",
-        "right_dip_to_peak_std_first_derivative",
-        "right_dip_to_peak_zero_crossing_count",
-        "right_dip_to_peak_zero_crossing_rate",
-        "right_dip_to_peak_first_derivative_energy",
-        "right_dip_to_peak_max_positive_first_derivative",
-        "right_dip_to_peak_max_abs_first_derivative_position",
-        "right_dip_to_peak_max_abs_first_derivative_relative_position",
-        "right_dip_to_peak_max_positive_first_derivative_position",
-        "right_dip_to_peak_max_positive_first_derivative_relative_position",
-        "right_dip_to_peak_min_negative_first_derivative",
-        "right_dip_to_peak_min_negative_first_derivative_position",
-        "right_dip_to_peak_min_negative_first_derivative_relative_position",
-    ]
+    default_keys = (
+        [f"main_peak_{key}" for key in _MAIN_PEAK_SLOPE_KEYS]
+        + [f"main_peak_{key}" for key in _FIRST_DERIVATIVE_SUMMARY_KEYS]
+        + _DIP_TO_PEAK_PAIR_KEYS
+        + [f"left_dip_to_peak_{key}" for key in _FIRST_DERIVATIVE_SUMMARY_KEYS]
+        + [f"right_dip_to_peak_{key}" for key in _FIRST_DERIVATIVE_SUMMARY_KEYS]
+    )
 
     for pair in selected_pairs:
         band_id = pair["band_id"]
@@ -329,41 +444,20 @@ def calculate_within_band_derivative_features(
             signed_slope_imbalance = (left_slope - right_slope) / max(abs(left_slope) + abs(right_slope), eps)
 
             win_start, win_end = _window_bounds(peak_freq, window_radius, len(first_derivative))
-            max_abs_d, mean_abs_d, energy_d = _abs_derivative_summary(first_derivative, win_start, win_end)
-            max_positive_d, min_negative_d = _signed_derivative_summary(first_derivative, win_start, win_end)
-            std_d, zc_count_d, zc_rate_d = _derivative_variability_summary(
-                first_derivative,
-                win_start,
-                win_end,
-                eps,
-            )
-            (
-                max_abs_pos_d,
-                max_abs_rel_pos_d,
-                max_positive_pos_d,
-                max_positive_rel_pos_d,
-                min_negative_pos_d,
-                min_negative_rel_pos_d,
-            ) = _derivative_extrema_location_summary(first_derivative, win_start, win_end)
 
             features[f"{prefix}_main_peak_left_slope"] = np.float32(left_slope)
             features[f"{prefix}_main_peak_right_slope"] = np.float32(right_slope)
             features[f"{prefix}_main_peak_slope_balance"] = np.float32(slope_balance)
             features[f"{prefix}_main_peak_signed_slope_imbalance"] = np.float32(signed_slope_imbalance)
-            features[f"{prefix}_main_peak_max_abs_first_derivative"] = np.float32(max_abs_d)
-            features[f"{prefix}_main_peak_mean_abs_first_derivative"] = np.float32(mean_abs_d)
-            features[f"{prefix}_main_peak_std_first_derivative"] = np.float32(std_d)
-            features[f"{prefix}_main_peak_zero_crossing_count"] = np.float32(zc_count_d)
-            features[f"{prefix}_main_peak_zero_crossing_rate"] = np.float32(zc_rate_d)
-            features[f"{prefix}_main_peak_max_abs_first_derivative_position"] = np.float32(max_abs_pos_d)
-            features[f"{prefix}_main_peak_max_abs_first_derivative_relative_position"] = np.float32(max_abs_rel_pos_d)
-            features[f"{prefix}_main_peak_first_derivative_energy"] = np.float32(energy_d)
-            features[f"{prefix}_main_peak_max_positive_first_derivative"] = np.float32(max_positive_d)
-            features[f"{prefix}_main_peak_max_positive_first_derivative_position"] = np.float32(max_positive_pos_d)
-            features[f"{prefix}_main_peak_max_positive_first_derivative_relative_position"] = np.float32(max_positive_rel_pos_d)
-            features[f"{prefix}_main_peak_min_negative_first_derivative"] = np.float32(min_negative_d)
-            features[f"{prefix}_main_peak_min_negative_first_derivative_position"] = np.float32(min_negative_pos_d)
-            features[f"{prefix}_main_peak_min_negative_first_derivative_relative_position"] = np.float32(min_negative_rel_pos_d)
+            _add_first_derivative_summary_features(
+                features=features,
+                prefix=prefix,
+                segment_name="main_peak",
+                first_derivative=first_derivative,
+                start_idx=win_start,
+                end_idx=win_end,
+                eps=eps,
+            )
 
         if not pair.get("pair_exists", False) or not pair.get("middle_dip_exists", False):
             continue
@@ -386,92 +480,33 @@ def calculate_within_band_derivative_features(
             / max(abs(left_dip_to_peak_slope) + abs(right_dip_to_peak_slope), eps)
         )
 
-        left_max_abs_d, left_mean_abs_d, left_energy_d = _abs_derivative_summary(
-            first_derivative,
-            left_peak_freq,
-            dip_freq,
-        )
-        left_max_positive_d, left_min_negative_d = _signed_derivative_summary(
-            first_derivative,
-            left_peak_freq,
-            dip_freq,
-        )
-        left_std_d, left_zc_count_d, left_zc_rate_d = _derivative_variability_summary(
-            first_derivative,
-            left_peak_freq,
-            dip_freq,
-            eps,
-        )
-        (
-            left_max_abs_pos_d,
-            left_max_abs_rel_pos_d,
-            left_max_positive_pos_d,
-            left_max_positive_rel_pos_d,
-            left_min_negative_pos_d,
-            left_min_negative_rel_pos_d,
-        ) = _derivative_extrema_location_summary(first_derivative, left_peak_freq, dip_freq)
-        right_max_abs_d, right_mean_abs_d, right_energy_d = _abs_derivative_summary(
-            first_derivative,
-            dip_freq,
-            right_peak_freq,
-        )
-        right_max_positive_d, right_min_negative_d = _signed_derivative_summary(
-            first_derivative,
-            dip_freq,
-            right_peak_freq,
-        )
-        right_std_d, right_zc_count_d, right_zc_rate_d = _derivative_variability_summary(
-            first_derivative,
-            dip_freq,
-            right_peak_freq,
-            eps,
-        )
-        (
-            right_max_abs_pos_d,
-            right_max_abs_rel_pos_d,
-            right_max_positive_pos_d,
-            right_max_positive_rel_pos_d,
-            right_min_negative_pos_d,
-            right_min_negative_rel_pos_d,
-        ) = _derivative_extrema_location_summary(first_derivative, dip_freq, right_peak_freq)
-
         features[f"{prefix}_left_dip_to_peak_slope"] = np.float32(left_dip_to_peak_slope)
         features[f"{prefix}_right_dip_to_peak_slope"] = np.float32(right_dip_to_peak_slope)
         features[f"{prefix}_dip_to_peak_slope_balance"] = np.float32(dip_to_peak_slope_balance)
         features[f"{prefix}_dip_to_peak_signed_slope_imbalance"] = np.float32(dip_to_peak_signed_slope_imbalance)
-        features[f"{prefix}_left_dip_to_peak_max_abs_first_derivative"] = np.float32(left_max_abs_d)
-        features[f"{prefix}_left_dip_to_peak_mean_abs_first_derivative"] = np.float32(left_mean_abs_d)
-        features[f"{prefix}_left_dip_to_peak_std_first_derivative"] = np.float32(left_std_d)
-        features[f"{prefix}_left_dip_to_peak_zero_crossing_count"] = np.float32(left_zc_count_d)
-        features[f"{prefix}_left_dip_to_peak_zero_crossing_rate"] = np.float32(left_zc_rate_d)
-        features[f"{prefix}_left_dip_to_peak_max_abs_first_derivative_position"] = np.float32(left_max_abs_pos_d)
-        features[f"{prefix}_left_dip_to_peak_max_abs_first_derivative_relative_position"] = np.float32(left_max_abs_rel_pos_d)
-        features[f"{prefix}_left_dip_to_peak_max_positive_first_derivative"] = np.float32(left_max_positive_d)
-        features[f"{prefix}_left_dip_to_peak_max_positive_first_derivative_position"] = np.float32(left_max_positive_pos_d)
-        features[f"{prefix}_left_dip_to_peak_max_positive_first_derivative_relative_position"] = np.float32(left_max_positive_rel_pos_d)
-        features[f"{prefix}_left_dip_to_peak_min_negative_first_derivative"] = np.float32(left_min_negative_d)
-        features[f"{prefix}_left_dip_to_peak_min_negative_first_derivative_position"] = np.float32(left_min_negative_pos_d)
-        features[f"{prefix}_left_dip_to_peak_min_negative_first_derivative_relative_position"] = np.float32(left_min_negative_rel_pos_d)
-        features[f"{prefix}_left_dip_to_peak_first_derivative_energy"] = np.float32(left_energy_d)
-        features[f"{prefix}_right_dip_to_peak_max_abs_first_derivative"] = np.float32(right_max_abs_d)
-        features[f"{prefix}_right_dip_to_peak_mean_abs_first_derivative"] = np.float32(right_mean_abs_d)
-        features[f"{prefix}_right_dip_to_peak_std_first_derivative"] = np.float32(right_std_d)
-        features[f"{prefix}_right_dip_to_peak_zero_crossing_count"] = np.float32(right_zc_count_d)
-        features[f"{prefix}_right_dip_to_peak_zero_crossing_rate"] = np.float32(right_zc_rate_d)
-        features[f"{prefix}_right_dip_to_peak_max_abs_first_derivative_position"] = np.float32(right_max_abs_pos_d)
-        features[f"{prefix}_right_dip_to_peak_max_abs_first_derivative_relative_position"] = np.float32(right_max_abs_rel_pos_d)
-        features[f"{prefix}_right_dip_to_peak_max_positive_first_derivative"] = np.float32(right_max_positive_d)
-        features[f"{prefix}_right_dip_to_peak_max_positive_first_derivative_position"] = np.float32(right_max_positive_pos_d)
-        features[f"{prefix}_right_dip_to_peak_max_positive_first_derivative_relative_position"] = np.float32(right_max_positive_rel_pos_d)
-        features[f"{prefix}_right_dip_to_peak_min_negative_first_derivative"] = np.float32(right_min_negative_d)
-        features[f"{prefix}_right_dip_to_peak_min_negative_first_derivative_position"] = np.float32(right_min_negative_pos_d)
-        features[f"{prefix}_right_dip_to_peak_min_negative_first_derivative_relative_position"] = np.float32(right_min_negative_rel_pos_d)
-        features[f"{prefix}_right_dip_to_peak_first_derivative_energy"] = np.float32(right_energy_d)
+        _add_first_derivative_summary_features(
+            features=features,
+            prefix=prefix,
+            segment_name="left_dip_to_peak",
+            first_derivative=first_derivative,
+            start_idx=left_peak_freq,
+            end_idx=dip_freq,
+            eps=eps,
+        )
+        _add_first_derivative_summary_features(
+            features=features,
+            prefix=prefix,
+            segment_name="right_dip_to_peak",
+            first_derivative=first_derivative,
+            start_idx=dip_freq,
+            end_idx=right_peak_freq,
+            eps=eps,
+        )
 
     return features
 
 
-def calculate_inter_band_derivative_features(
+def calculate_inter_band_first_derivative_features(
     selected_pairs: list[dict],
     signal: np.ndarray,
     first_derivative: Optional[np.ndarray] = None,
@@ -481,6 +516,8 @@ def calculate_inter_band_derivative_features(
 ) -> dict:
     """
     Calculate first-derivative transition features between adjacent bands.
+
+    This covers the shape from the end peak of one selected band to the start peak of the next band.
 
     For each adjacent pair of bands, the transition is measured from:
         previous band right peak if a pair exists, otherwise previous band main peak
@@ -501,34 +538,14 @@ def calculate_inter_band_derivative_features(
         dip_freq = np.asarray(detected_peak_dip.get("dip_frequencies", []), dtype=np.float32)
         dip_amp = np.asarray(detected_peak_dip.get("dip_amplitudes", []), dtype=np.float32)
 
-    default_keys = [
-        "transition_exists",
-        "transition_start_freq",
-        "transition_end_freq",
-        "transition_length",
-        "transition_net_amplitude_change",
-        "transition_slope",
-        "transition_mean_first_derivative",
-        "transition_mean_abs_first_derivative",
-        "transition_std_first_derivative",
-        "transition_zero_crossing_count",
-        "transition_zero_crossing_rate",
-        "transition_max_abs_first_derivative",
-        "transition_max_abs_first_derivative_position",
-        "transition_max_abs_first_derivative_relative_position",
-        "transition_first_derivative_energy",
-        "transition_max_positive_first_derivative",
-        "transition_max_positive_first_derivative_position",
-        "transition_max_positive_first_derivative_relative_position",
-        "transition_min_negative_first_derivative",
-        "transition_min_negative_first_derivative_position",
-        "transition_min_negative_first_derivative_relative_position",
-        "transition_positive_derivative_area",
-        "transition_negative_derivative_area",
-        "num_inter_band_dips",
-        "first_inter_band_dip_freq",
-        "last_inter_band_dip_freq",
-    ]
+    default_keys = (
+        [f"transition_{key}" for key in _FIRST_DERIVATIVE_SEGMENT_KEYS]
+        + [
+            "num_inter_band_dips",
+            "first_inter_band_dip_freq",
+            "last_inter_band_dip_freq",
+        ]
+    )
     piece_names = [
         "peak_to_first_dip",
         "first_dip_to_last_dip",
@@ -543,7 +560,7 @@ def calculate_inter_band_derivative_features(
         for key in default_keys:
             features[f"{prefix}_{key}"] = np.float32(0.0)
         for piece_name in piece_names:
-            _add_empty_segment_derivative_features(features, prefix, piece_name)
+            _add_empty_first_derivative_segment_features(features, prefix, piece_name)
 
         start_endpoint = _inter_band_endpoint(left_pair, side="right")
         end_endpoint = _inter_band_endpoint(right_pair, side="left")
@@ -552,54 +569,18 @@ def calculate_inter_band_derivative_features(
 
         start_freq, start_amp = start_endpoint
         end_freq, end_amp = end_endpoint
-        start_idx, end_idx = _segment_bounds(start_freq, end_freq, len(signal))
-        derivative_segment = first_derivative[start_idx:end_idx + 1]
-
-        if derivative_segment.size == 0: # if no derivative segment
-            continue
-
         if include_broad_transition:
-            transition_length = abs(end_freq - start_freq)
-            net_amplitude_change = end_amp - start_amp
-            transition_slope = net_amplitude_change / max(transition_length, eps)
-            positive_derivative_area = np.sum(np.maximum(derivative_segment, 0.0))
-            negative_derivative_area = np.sum(np.maximum(-derivative_segment, 0.0))
-            derivative_std, zero_crossing_count, zero_crossing_rate = _derivative_variability_stats(
-                derivative_segment,
-                eps,
+            _add_first_derivative_segment_features(
+                features=features,
+                prefix=prefix,
+                segment_name="transition",
+                start_freq=start_freq,
+                start_amp=start_amp,
+                end_freq=end_freq,
+                end_amp=end_amp,
+                first_derivative=first_derivative,
+                eps=eps,
             )
-            (
-                max_abs_pos,
-                max_abs_rel_pos,
-                max_positive_pos,
-                max_positive_rel_pos,
-                min_negative_pos,
-                min_negative_rel_pos,
-            ) = _derivative_extrema_location_summary(first_derivative, start_freq, end_freq)
-
-            features[f"{prefix}_transition_exists"] = np.float32(1.0)
-            features[f"{prefix}_transition_start_freq"] = np.float32(start_freq)
-            features[f"{prefix}_transition_end_freq"] = np.float32(end_freq)
-            features[f"{prefix}_transition_length"] = np.float32(transition_length)
-            features[f"{prefix}_transition_net_amplitude_change"] = np.float32(net_amplitude_change)
-            features[f"{prefix}_transition_slope"] = np.float32(transition_slope)
-            features[f"{prefix}_transition_mean_first_derivative"] = np.float32(np.mean(derivative_segment))
-            features[f"{prefix}_transition_mean_abs_first_derivative"] = np.float32(np.mean(np.abs(derivative_segment)))
-            features[f"{prefix}_transition_std_first_derivative"] = np.float32(derivative_std)
-            features[f"{prefix}_transition_zero_crossing_count"] = np.float32(zero_crossing_count)
-            features[f"{prefix}_transition_zero_crossing_rate"] = np.float32(zero_crossing_rate)
-            features[f"{prefix}_transition_max_abs_first_derivative"] = np.float32(np.max(np.abs(derivative_segment)))
-            features[f"{prefix}_transition_max_abs_first_derivative_position"] = np.float32(max_abs_pos)
-            features[f"{prefix}_transition_max_abs_first_derivative_relative_position"] = np.float32(max_abs_rel_pos)
-            features[f"{prefix}_transition_first_derivative_energy"] = np.float32(np.sum(derivative_segment * derivative_segment))
-            features[f"{prefix}_transition_max_positive_first_derivative"] = np.float32(np.max(derivative_segment))
-            features[f"{prefix}_transition_max_positive_first_derivative_position"] = np.float32(max_positive_pos)
-            features[f"{prefix}_transition_max_positive_first_derivative_relative_position"] = np.float32(max_positive_rel_pos)
-            features[f"{prefix}_transition_min_negative_first_derivative"] = np.float32(np.min(derivative_segment))
-            features[f"{prefix}_transition_min_negative_first_derivative_position"] = np.float32(min_negative_pos)
-            features[f"{prefix}_transition_min_negative_first_derivative_relative_position"] = np.float32(min_negative_rel_pos)
-            features[f"{prefix}_transition_positive_derivative_area"] = np.float32(positive_derivative_area)
-            features[f"{prefix}_transition_negative_derivative_area"] = np.float32(negative_derivative_area)
 
         if dip_freq.size == 0: # if no dips
             continue
@@ -623,7 +604,7 @@ def calculate_inter_band_derivative_features(
         features[f"{prefix}_first_inter_band_dip_freq"] = np.float32(first_dip_freq)
         features[f"{prefix}_last_inter_band_dip_freq"] = np.float32(last_dip_freq)
 
-        _add_segment_derivative_features(
+        _add_first_derivative_segment_features(
             features=features,
             prefix=prefix,
             segment_name="peak_to_first_dip",
@@ -636,7 +617,7 @@ def calculate_inter_band_derivative_features(
         )
 
         if first_dip_id != last_dip_id:
-            _add_segment_derivative_features(
+            _add_first_derivative_segment_features(
                 features=features,
                 prefix=prefix,
                 segment_name="first_dip_to_last_dip",
@@ -648,7 +629,7 @@ def calculate_inter_band_derivative_features(
                 eps=eps,
             )
 
-        _add_segment_derivative_features(
+        _add_first_derivative_segment_features(
             features=features,
             prefix=prefix,
             segment_name="last_dip_to_peak",
@@ -663,6 +644,228 @@ def calculate_inter_band_derivative_features(
     return features
 
 
+def calculate_within_band_second_derivative_features(
+    selected_pairs: list[dict],
+    signal: np.ndarray,
+    first_derivative: Optional[np.ndarray] = None,
+    second_derivative: Optional[np.ndarray] = None,
+    window_radius: int = 5,
+    eps: float = 1e-8,
+) -> dict:
+    """Calculate local curvature features around selected peaks and middle dips inside each band."""
+    signal, first_derivative, second_derivative = _prepare_second_derivative(
+        signal,
+        first_derivative,
+        second_derivative,
+    )
+    features = {}
+
+    for pair in selected_pairs:
+        band_id = pair["band_id"]
+        prefix = f"band{band_id}"
+
+        for segment_name in ["main_peak", "left_dip_to_peak", "right_dip_to_peak"]:
+            _add_empty_second_derivative_segment_features(features, prefix, segment_name)
+
+        features[f"{prefix}_main_peak_second_derivative_at_peak"] = np.float32(0.0)
+        features[f"{prefix}_left_peak_second_derivative_at_peak"] = np.float32(0.0)
+        features[f"{prefix}_right_peak_second_derivative_at_peak"] = np.float32(0.0)
+        features[f"{prefix}_middle_dip_second_derivative_at_dip"] = np.float32(0.0)
+
+        if pair.get("main_peak_exists", False):
+            peak_freq = float(pair["main_peak_freq"])
+            peak_idx = _safe_index(peak_freq, len(second_derivative))
+            win_start, win_end = _window_bounds(peak_freq, window_radius, len(second_derivative))
+            _add_second_derivative_segment_features(
+                features=features,
+                prefix=prefix,
+                segment_name="main_peak",
+                start_idx=win_start,
+                end_idx=win_end,
+                second_derivative=second_derivative,
+                eps=eps,
+            )
+            features[f"{prefix}_main_peak_second_derivative_at_peak"] = np.float32(second_derivative[peak_idx])
+
+        if not pair.get("pair_exists", False) or not pair.get("middle_dip_exists", False):
+            continue
+
+        left_peak_freq = float(pair["left_peak_freq"])
+        right_peak_freq = float(pair["right_peak_freq"])
+        dip_freq = float(pair["middle_dip_freq"])
+        left_peak_idx = _safe_index(left_peak_freq, len(second_derivative))
+        right_peak_idx = _safe_index(right_peak_freq, len(second_derivative))
+        dip_idx = _safe_index(dip_freq, len(second_derivative))
+
+        _add_second_derivative_segment_features(
+            features=features,
+            prefix=prefix,
+            segment_name="left_dip_to_peak",
+            start_idx=left_peak_freq,
+            end_idx=dip_freq,
+            second_derivative=second_derivative,
+            eps=eps,
+        )
+        _add_second_derivative_segment_features(
+            features=features,
+            prefix=prefix,
+            segment_name="right_dip_to_peak",
+            start_idx=dip_freq,
+            end_idx=right_peak_freq,
+            second_derivative=second_derivative,
+            eps=eps,
+        )
+        features[f"{prefix}_left_peak_second_derivative_at_peak"] = np.float32(second_derivative[left_peak_idx])
+        features[f"{prefix}_right_peak_second_derivative_at_peak"] = np.float32(second_derivative[right_peak_idx])
+        features[f"{prefix}_middle_dip_second_derivative_at_dip"] = np.float32(second_derivative[dip_idx])
+
+    return features
+
+
+def calculate_inter_band_second_derivative_features(
+    selected_pairs: list[dict],
+    signal: np.ndarray,
+    first_derivative: Optional[np.ndarray] = None,
+    second_derivative: Optional[np.ndarray] = None,
+    detected_peak_dip: Optional[dict] = None,
+    include_broad_transition: bool = True,
+    eps: float = 1e-8,
+) -> dict:
+    """Calculate curvature features for broad and dip-split transitions between adjacent bands."""
+    signal, first_derivative, second_derivative = _prepare_second_derivative(
+        signal,
+        first_derivative,
+        second_derivative,
+    )
+    features = {}
+    sorted_pairs = sorted(selected_pairs, key=lambda pair: pair["band_id"])
+    dip_freq = np.asarray([], dtype=np.float32)
+    if detected_peak_dip is not None:
+        dip_freq = np.asarray(detected_peak_dip.get("dip_frequencies", []), dtype=np.float32)
+
+    for left_pair, right_pair in zip(sorted_pairs[:-1], sorted_pairs[1:]):
+        left_band_id = left_pair["band_id"]
+        right_band_id = right_pair["band_id"]
+        prefix = f"band{left_band_id}_to_band{right_band_id}"
+
+        for segment_name in [
+            "transition",
+            "peak_to_first_dip",
+            "first_dip_to_last_dip",
+            "last_dip_to_peak",
+        ]:
+            _add_empty_second_derivative_segment_features(features, prefix, segment_name)
+
+        start_endpoint = _inter_band_endpoint(left_pair, side="right")
+        end_endpoint = _inter_band_endpoint(right_pair, side="left")
+        if start_endpoint is None or end_endpoint is None:
+            continue
+
+        start_freq, _ = start_endpoint
+        end_freq, _ = end_endpoint
+
+        if include_broad_transition:
+            _add_second_derivative_segment_features(
+                features=features,
+                prefix=prefix,
+                segment_name="transition",
+                start_idx=start_freq,
+                end_idx=end_freq,
+                second_derivative=second_derivative,
+                eps=eps,
+            )
+
+        if dip_freq.size == 0:
+            continue
+
+        low_freq = min(start_freq, end_freq)
+        high_freq = max(start_freq, end_freq)
+        inter_band_dip_ids = np.where((dip_freq > low_freq) & (dip_freq < high_freq))[0]
+        if inter_band_dip_ids.size == 0:
+            continue
+
+        inter_band_dip_ids = inter_band_dip_ids[np.argsort(dip_freq[inter_band_dip_ids])]
+        first_dip_id = inter_band_dip_ids[0]
+        last_dip_id = inter_band_dip_ids[-1]
+
+        first_dip_freq = float(dip_freq[first_dip_id])
+        last_dip_freq = float(dip_freq[last_dip_id])
+
+        _add_second_derivative_segment_features(
+            features=features,
+            prefix=prefix,
+            segment_name="peak_to_first_dip",
+            start_idx=start_freq,
+            end_idx=first_dip_freq,
+            second_derivative=second_derivative,
+            eps=eps,
+        )
+        if first_dip_id != last_dip_id:
+            _add_second_derivative_segment_features(
+                features=features,
+                prefix=prefix,
+                segment_name="first_dip_to_last_dip",
+                start_idx=first_dip_freq,
+                end_idx=last_dip_freq,
+                second_derivative=second_derivative,
+                eps=eps,
+            )
+        _add_second_derivative_segment_features(
+            features=features,
+            prefix=prefix,
+            segment_name="last_dip_to_peak",
+            start_idx=last_dip_freq,
+            end_idx=end_freq,
+            second_derivative=second_derivative,
+            eps=eps,
+        )
+
+    return features
+
+
+def calculate_second_derivative_features(
+    selected_pairs: list[dict],
+    signal: np.ndarray,
+    first_derivative: Optional[np.ndarray] = None,
+    second_derivative: Optional[np.ndarray] = None,
+    detected_peak_dip: Optional[dict] = None,
+    window_radius: int = 5,
+    include_inter_band: bool = True,
+    include_broad_transition: bool = True,
+    eps: float = 1e-8,
+) -> dict:
+    """
+    Calculate second-derivative curvature features within bands and, optionally, between bands.
+
+    This is the public second-derivative wrapper combining the two split second-derivative functions.
+
+    The second derivative describes curvature:
+        negative values around peak tops indicate concave-down sharpness,
+        positive values around dip bottoms indicate concave-up sharpness.
+    """
+    features = calculate_within_band_second_derivative_features(
+        selected_pairs=selected_pairs,
+        signal=signal,
+        first_derivative=first_derivative,
+        second_derivative=second_derivative,
+        window_radius=window_radius,
+        eps=eps,
+    )
+    if include_inter_band:
+        features.update(
+            calculate_inter_band_second_derivative_features(
+                selected_pairs=selected_pairs,
+                signal=signal,
+                first_derivative=first_derivative,
+                second_derivative=second_derivative,
+                detected_peak_dip=detected_peak_dip,
+                include_broad_transition=include_broad_transition,
+                eps=eps,
+            )
+        )
+    return features
+
+
 def calculate_first_derivative_features(
     selected_pairs: list[dict],
     signal: np.ndarray,
@@ -673,8 +876,8 @@ def calculate_first_derivative_features(
     include_broad_transition: bool = True,
     eps: float = 1e-8,
 ) -> dict:
-    """Calculate first-derivative features within bands and, optionally, between bands."""
-    features = calculate_within_band_derivative_features(
+    """Public first-derivative wrapper combining within-band and optional inter-band features."""
+    features = calculate_within_band_first_derivative_features(
         selected_pairs=selected_pairs,
         signal=signal,
         first_derivative=first_derivative,
@@ -683,7 +886,7 @@ def calculate_first_derivative_features(
     )
     if include_inter_band:
         features.update(
-            calculate_inter_band_derivative_features(
+            calculate_inter_band_first_derivative_features(
                 selected_pairs=selected_pairs,
                 signal=signal,
                 first_derivative=first_derivative,
@@ -695,24 +898,43 @@ def calculate_first_derivative_features(
     return features
 
 
-def calculate_derivative_features(
-    selected_pairs: list[dict],
-    signal: np.ndarray,
-    first_derivative: Optional[np.ndarray] = None,
-    detected_peak_dip: Optional[dict] = None,
-    window_radius: int = 5,
-    include_inter_band: bool = True,
-    include_broad_transition: bool = True,
-    eps: float = 1e-8,
-) -> dict:
-    """Compatibility wrapper for first-derivative-only feature extraction."""
-    return calculate_first_derivative_features(
-        selected_pairs=selected_pairs,
-        signal=signal,
-        first_derivative=first_derivative,
-        detected_peak_dip=detected_peak_dip,
-        window_radius=window_radius,
-        include_inter_band=include_inter_band,
-        include_broad_transition=include_broad_transition,
-        eps=eps,
-    )
+# def calculate_derivative_features(
+#     selected_pairs: list[dict],
+#     signal: np.ndarray,
+#     first_derivative: Optional[np.ndarray] = None,
+#     detected_peak_dip: Optional[dict] = None,
+#     second_derivative: Optional[np.ndarray] = None,
+#     window_radius: int = 5,
+#     include_inter_band: bool = True,
+#     include_broad_transition: bool = True,
+#     include_second_derivative: bool = False,
+#     eps: float = 1e-8,
+# ) -> dict:
+#     """Public wrapper for first-derivative features plus optional second-derivative features."""
+#     features = calculate_first_derivative_features(
+#         selected_pairs=selected_pairs,
+#         signal=signal,
+#         first_derivative=first_derivative,
+#         detected_peak_dip=detected_peak_dip,
+#         window_radius=window_radius,
+#         include_inter_band=include_inter_band,
+#         include_broad_transition=include_broad_transition,
+#         eps=eps,
+#     )
+#     if include_second_derivative:
+#         features.update(
+#             calculate_second_derivative_features(
+#                 selected_pairs=selected_pairs,
+#                 signal=signal,
+#                 first_derivative=first_derivative,
+#                 second_derivative=second_derivative,
+#                 detected_peak_dip=detected_peak_dip,
+#                 window_radius=window_radius,
+#                 include_inter_band=include_inter_band,
+#                 include_broad_transition=include_broad_transition,
+#                 eps=eps,
+#             )
+#         )
+#     return features
+#
+

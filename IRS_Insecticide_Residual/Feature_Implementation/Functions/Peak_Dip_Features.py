@@ -1,4 +1,4 @@
-from scipy.signal import find_peaks, peak_widths, peak_prominences
+from scipy.signal import find_peaks, peak_widths
 import numpy as np
 
 
@@ -44,7 +44,7 @@ def detect_peaks_and_dips(
         main_peak_rel_height=0.9,
         dip_rel_height=0.5,
 ):
-    x = np.asarray(signal, dtype=np.float32)
+    x = np.asarray(signal, dtype=np.float32).ravel()
 
     # signal scale used to convert fractional prominence into an absolute threshold
     if percentile_method == "histogram":
@@ -505,6 +505,7 @@ def calculate_doublet_features(
         features[f"{prefix}_dip_depth"] = dip_depth
         features[f"{prefix}_dip_depth_norm"] = dip_depth_norm
         features[f"{prefix}_dip_relative_position"] = dip_relative_position
+        features[f"{prefix}_doublet_score"] = doublet_score
 
     # comparing different bands
     features["band1_to_band2_main_peak_distance"] = 0.0
@@ -599,7 +600,7 @@ def calculate_doublet_area_features(
         middle_dip_left_ips, middle_dip_right_ips
     """
 
-    signal = np.asarray(signal, dtype=np.float64)
+    signal = np.asarray(signal, dtype=np.float32)
     features = {}
 
     for pair in selected_pairs:
@@ -755,7 +756,7 @@ def calculate_doublet_area_features(
         # This is not limited to the dip_width only.
         # It measures the whole valley between the two selected peaks.
         valley_baseline = min(left_amp, right_amp)
-      
+
         doublet_valley_area = _positive_area(
             x=signal,
             start_idx=left_f,
@@ -768,8 +769,8 @@ def calculate_doublet_area_features(
         peak_separation = right_f - left_f
 
         features[f"{prefix}_doublet_valley_area"] = doublet_valley_area
-        features[f"{prefix}_doublet_valley_area_norm"] = (doublet_valley_area / max(dip_depth * peak_separation, eps))
+        features[f"{prefix}_doublet_valley_area_norm"] = (
+            doublet_valley_area / max(dip_depth * peak_separation, eps)
+        )
 
     return features
-
-

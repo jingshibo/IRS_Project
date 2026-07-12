@@ -149,10 +149,21 @@ area_features = Peak_Dip_Features.calculate_doublet_area_features(sample_peak_di
 
 ## derivative feature calculation
 sample_first_derivative = x_all[1698, 1, :]
-derivative_features = Derivative_Features.calculate_first_derivative_features(
+sample_second_derivative = x_all[1698, 2, :]
+first_derivative_features = Derivative_Features.calculate_first_derivative_features(
     selected_pairs=sample_peak_dip_pairs,
     signal=sample_signal,
     first_derivative=sample_first_derivative,
+    detected_peak_dip=sample_peaks_and_dips,
+    window_radius=5,
+    include_inter_band=True,
+    include_broad_transition=True,
+)
+second_derivative_features = Derivative_Features.calculate_second_derivative_features(
+    selected_pairs=sample_peak_dip_pairs,
+    signal=sample_signal,
+    first_derivative=sample_first_derivative,
+    second_derivative=sample_second_derivative,
     detected_peak_dip=sample_peaks_and_dips,
     window_radius=5,
     include_inter_band=True,
