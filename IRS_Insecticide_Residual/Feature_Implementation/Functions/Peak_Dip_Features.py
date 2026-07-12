@@ -2,6 +2,39 @@ from scipy.signal import find_peaks, peak_widths
 import numpy as np
 
 
+"""
+Peak/dip feature design notes
+-----------------------------
+Peak/dip features describe explicit spectral structures rather than whole-signal statistics or
+derivative shape. They are centered on detected peaks, dips, and selected within-band doublets.
+
+detect_peaks_and_dips():
+    Finds candidate peaks and dips with prominence, width, amplitude, and base/location metadata.
+    Separate width levels are kept so general peaks, main peaks, and dips can use different
+    reference heights when needed.
+
+select_band_peak_dip_pairs():
+    Converts raw detections into one fixed candidate per band. It keeps the main peak, optional
+    left/right doublet peaks, and the middle dip between them so later feature functions use a
+    consistent band-wise structure.
+
+calculate_doublet_features():
+    Converts selected peak/dip pairs into morphology features: peak location, amplitude,
+    prominence, width, Q, peak separation, balance/imbalance, dip depth, dip position, and
+    doublet score. These features describe whether a band has a strong and balanced doublet.
+
+calculate_doublet_area_features():
+    Measures peak and dip areas using exact width boundaries. Area features capture integrated
+    signal strength or valley strength, which complements point features such as amplitude,
+    prominence, and width.
+
+Relation to other feature modules:
+    Global_Features.py summarizes the whole channel, while Derivative_Features.py describes
+    first/second-derivative shape. This file stores the explicit peak-dip geometry those modules
+    do not directly capture.
+"""
+
+
 ## compute approximate percentile using histogram binning (returns float32)
 def _histogram_percentile(x: np.ndarray, q: float, bins: int = 128) -> np.float32:
     x = np.asarray(x, dtype=np.float32).ravel()

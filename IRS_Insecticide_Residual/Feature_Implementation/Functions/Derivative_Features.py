@@ -3,6 +3,48 @@ from typing import Optional
 import numpy as np
 
 
+"""
+Derivative feature design notes
+-------------------------------
+The feature groups below are separated by the physical shape question they answer.
+
+_MAIN_PEAK_SLOPE_KEYS:
+    Captures whether the main peak rises and falls symmetrically around its width reference line.
+    These features describe peak sharpness and left/right asymmetry using simple endpoint slopes.
+
+_DIP_TO_PEAK_PAIR_KEYS:
+    Compares the two sides of a selected doublet: left peak to middle dip and middle dip to right peak.
+    These features describe whether the doublet has balanced or asymmetric side slopes.
+
+_FIRST_DERIVATIVE_DOUBLET_SHAPE_KEYS:
+    Describes first-derivative behavior inside each selected band/doublet region.
+    These features focus on steepness, derivative variability, zero crossings, derivative energy,
+    and where the strongest positive/negative derivative occurs.
+
+_FIRST_DERIVATIVE_SEGMENT_KEYS:
+    Describes endpoint-defined first-derivative transition segments, currently used between frequency bands.
+    These include start/end metadata, net amplitude change, slope, derivative statistics, and
+    positive/negative derivative area because transitions need explicit segment geometry.
+
+_SECOND_DERIVATIVE_SEGMENT_KEYS:
+    Describes compact curvature behavior for both within-band and inter-band regions.
+    These omit start/end slope metadata because second derivative is used here mainly for curvature
+    strength and sign, not for endpoint trend.
+
+Why first derivative has two key lists but second derivative has one:
+    First derivative separates within-doublet shape from endpoint-to-endpoint transitions because
+    transition features need geometry fields such as start/end, length, amplitude change, and slope.
+    Second derivative is kept as one compact curvature set because it is noisier and mainly used for
+    curvature strength/sign; it omits first-derivative-style trend, zero-crossing, std, and position fields.
+
+Main function groups:
+    calculate_within_band_first_derivative_features() extracts within-band (doublet-shape) first-derivative features.
+    calculate_inter_band_first_derivative_features() extracts inter-band first-derivative transition features.
+    calculate_within_band_second_derivative_features() extracts within-band curvature features.
+    calculate_inter_band_second_derivative_features() extracts inter-band curvature features.
+"""
+
+
 # Slope-only feature names for the main peak width reference line.
 _MAIN_PEAK_SLOPE_KEYS = [
     "left_slope",  # slope from left width intersection to the main peak

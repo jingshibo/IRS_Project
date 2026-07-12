@@ -3,6 +3,35 @@ from typing import List, Tuple
 import numpy as np
 
 
+"""
+Global feature design notes
+---------------------------
+Global features summarize the whole channel signal rather than peak/dip-specific regions.
+
+Basic amplitude statistics:
+    Mean, std, min/max, peak-to-peak, median, quartiles, IQR, abs mean, and RMS describe
+    overall signal level, spread, range, and robust distribution shape.
+
+Global shape statistics:
+    Zero-crossing rate and linear slope describe broad oscillation/sign-change behavior and
+    overall trend across the full channel.
+
+Distribution-shape statistics:
+    Skewness and excess kurtosis describe asymmetry and tail/peak heaviness of the full signal.
+
+Global location statistics:
+    Argmax and argmin record where the strongest high/low values occur in the full channel.
+
+Spectral-style statistics:
+    Dominant bin, spectral centroid, bandwidth, and entropy describe where the signal energy is
+    concentrated and how broadly it is spread across bins.
+
+Relation to derivative features:
+    These features are intentionally global. Derivative_Features.py measures local doublet and
+    inter-band shape, so similar ideas such as slope or zero crossing are measured at different scales.
+"""
+
+
 _EPS = np.float32(1e-12)  # small float32 constant to prevent division by zero
 
 
