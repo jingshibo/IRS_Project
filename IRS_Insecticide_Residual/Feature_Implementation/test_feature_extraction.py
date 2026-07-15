@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from IRS_Insecticide_Residual.Feature_Implementation.Functions import Derivative_Features, Peak_Dip_Features, Plotting
+from IRS_Insecticide_Residual.Feature_Implementation.Functions import Derivative_Features, Peak_Dip_Features, Plotting, \
+    Global_Features
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 
 ## load data
@@ -90,7 +91,7 @@ SHOW_LABELS = True
 fig, axes = plt.subplots(4, 5, figsize=(20, 12))
 axes = axes.ravel()
 
-for ax, sample_idx in zip(axes, sample_indices):
+for ax, sample_idx in zip(axes, sample_indices): # loop and plot each sample separately
     signal = x_all[sample_idx, 1, :]
     Plotting.plot_peak_dip_summary(
         ax=ax,
@@ -169,3 +170,6 @@ second_derivative_features = Derivative_Features.calculate_second_derivative_fea
     include_inter_band=True,
     include_broad_transition=True,
 )
+
+## global features
+feature_block, feature_names = Global_Features.calculate_global_features(x_all[:, 0, :], channel_name="original")

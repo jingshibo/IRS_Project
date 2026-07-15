@@ -1,10 +1,10 @@
 from scipy.signal import find_peaks, peak_widths
 import numpy as np
 
-
 """
 Peak/dip feature design notes
 -----------------------------
+Compute derivative features from a single sample curve.
 Peak/dip features describe explicit spectral structures rather than whole-signal statistics or
 derivative shape. They are centered on detected peaks, dips, and selected within-band doublets.
 
@@ -14,7 +14,7 @@ detect_peaks_and_dips():
     reference heights when needed.
 
 select_band_peak_dip_pairs():
-    Converts raw detections into one fixed candidate per band. It keeps the main peak, optional
+    Converts raw peak/dip detections into fixed candidates per band. It keeps the main peak, optional
     left/right doublet peaks, and the middle dip between them so later feature functions use a
     consistent band-wise structure.
 
@@ -32,7 +32,33 @@ Relation to other feature modules:
     Global_Features.py summarizes the whole channel, while Derivative_Features.py describes
     first/second-derivative shape. This file stores the explicit peak-dip geometry those modules
     do not directly capture.
+
+Fail-fast behavior:
+    Missing peak/dip structures keep zero-filled default features. However, once a peak, dip,
+    pair, or area is selected and measured, near-zero ratio denominators raise errors instead of
+    being silently clamped. This keeps invalid widths, duplicate peak positions, zero prominence,
+    flat dip depth, or near-zero amplitude-ratio denominators visible during data checks.
 """
+
+def _safe_ratio(numerator: float, denominator: float, eps: float, context: str) -> float:
+    denominator = float(denominator)
+    if abs(denominator) <= eps:
+        raise ValueError(
+            "Peak/dip feature ratio encountered near-zero denominator: "
+            f"context={context}, numerator={float(numerator)}, denominator={denominator}"
+        )
+    return float(numerator) / denominator
+
+
+def _validate_equal_lengths(context: str, **arrays: np.ndarray) -> None:
+    lengths = {name: len(value) for name, value in arrays.items()}
+    unique_lengths = set(lengths.values())
+    if len(unique_lengths) != 1:
+        raise ValueError(f"{context} arrays must have matching lengths, got {lengths}")
+
+
+def _as_float32_feature_dict(features: dict) -> dict:
+    return {key: np.float32(value) for key, value in features.items()}
 
 
 ## compute approximate percentile using histogram binning (returns float32)
@@ -78,6 +104,8 @@ def detect_peaks_and_dips(
         dip_rel_height=0.5,
 ):
     x = np.asarray(signal, dtype=np.float32).ravel()
+    if x.size == 0:
+        raise ValueError("signal must contain at least one value")
 
     # signal scale used to convert fractional prominence into an absolute threshold
     if percentile_method == "histogram":
@@ -198,7 +226,9 @@ def select_band_peak_dip_pairs(
     """
 
     signal = detected_peak_dip.get("signal")
-    signal = np.asarray(signal, dtype=np.float32)
+    signal = np.asarray(signal, dtype=np.float32).ravel()
+    if signal.size == 0:
+        raise ValueError("detected_peak_dip['signal'] must contain at least one value")
 
     peak_freq = detected_peak_dip["peak_frequencies"]
     peak_amp = detected_peak_dip["peak_amplitudes"]
@@ -218,11 +248,28 @@ def select_band_peak_dip_pairs(
     dip_left_ips = detected_peak_dip["dip_left_ips"]
     dip_right_ips = detected_peak_dip["dip_right_ips"]
 
-    assert len(peak_freq) == len(peak_amp) == len(peak_promin) == len(peak_width)
-    assert len(peak_freq) == len(peak_left_ips) == len(peak_right_ips)
-
-    assert len(dip_freq) == len(dip_amp) == len(dip_promin) == len(dip_width)
-    assert len(dip_freq) == len(dip_left_ips) == len(dip_right_ips)
+    _validate_equal_lengths(
+        "peak",
+        peak_frequencies=peak_freq,
+        peak_amplitudes=peak_amp,
+        peak_prominences=peak_promin,
+        peak_widths=peak_width,
+        peak_left_ips=peak_left_ips,
+        peak_right_ips=peak_right_ips,
+        main_peak_widths=main_peak_width,
+        main_peak_width_heights=main_peak_width_heights,
+        main_peak_left_ips=main_peak_left_ips,
+        main_peak_right_ips=main_peak_right_ips,
+    )
+    _validate_equal_lengths(
+        "dip",
+        dip_frequencies=dip_freq,
+        dip_amplitudes=dip_amp,
+        dip_prominences=dip_promin,
+        dip_widths=dip_width,
+        dip_left_ips=dip_left_ips,
+        dip_right_ips=dip_right_ips,
+    )
 
     peak_dip_pairs = []
 
@@ -447,7 +494,7 @@ def calculate_doublet_features(
             features[f"{prefix}_main_peak_amp"] = pair["main_peak_amp"]
             features[f"{prefix}_main_peak_prominence"] = pair["main_peak_prominence"]
             features[f"{prefix}_main_peak_width"] = main_w
-            features[f"{prefix}_main_peak_Q"] = main_f / max(main_w, eps)
+            features[f"{prefix}_main_peak_Q"] = _safe_ratio(main_f, main_w, eps, f"{prefix}_main_peak_Q")
 
         # -------------------------
         # Pair-based features
@@ -469,26 +516,56 @@ def calculate_doublet_features(
 
         separation = right_f - left_f
         # Balance features: 1 = balanced, 0 = highly imbalanced
-        amp_balance = min(abs(left_amp), abs(right_amp)) / max(max(abs(left_amp), abs(right_amp)), eps)
-        prom_balance = min(abs(left_prom), abs(right_prom)) / max(max(abs(left_prom), abs(right_prom)), eps)
-        width_balance = min(abs(left_w), abs(right_w)) / max(max(abs(left_w), abs(right_w)), eps)
+        amp_balance = _safe_ratio(
+            min(abs(left_amp), abs(right_amp)),
+            max(abs(left_amp), abs(right_amp)),
+            eps,
+            f"{prefix}_peak_balance_amp",
+        )
+        prom_balance = _safe_ratio(
+            min(abs(left_prom), abs(right_prom)),
+            max(abs(left_prom), abs(right_prom)),
+            eps,
+            f"{prefix}_peak_balance_prominence",
+        )
+        width_balance = _safe_ratio(
+            min(abs(left_w), abs(right_w)),
+            max(abs(left_w), abs(right_w)),
+            eps,
+            f"{prefix}_peak_balance_width",
+        )
 
         # Signed imbalance features: positive = left larger, negative = right larger
-        signed_amp_imbalance = (left_amp - right_amp) / max(abs(left_amp) + abs(right_amp), eps)
-        signed_prominence_imbalance = (left_prom - right_prom) / max(abs(left_prom) + abs(right_prom), eps)
-        signed_width_imbalance = (left_w - right_w) / max(abs(left_w) + abs(right_w), eps)
+        signed_amp_imbalance = _safe_ratio(
+            left_amp - right_amp,
+            abs(left_amp) + abs(right_amp),
+            eps,
+            f"{prefix}_signed_amp_imbalance",
+        )
+        signed_prominence_imbalance = _safe_ratio(
+            left_prom - right_prom,
+            abs(left_prom) + abs(right_prom),
+            eps,
+            f"{prefix}_signed_prominence_imbalance",
+        )
+        signed_width_imbalance = _safe_ratio(
+            left_w - right_w,
+            abs(left_w) + abs(right_w),
+            eps,
+            f"{prefix}_signed_width_imbalance",
+        )
 
         features[f"{prefix}_left_peak_freq"] = left_f
         features[f"{prefix}_left_peak_amp"] = left_amp
         features[f"{prefix}_left_peak_prominence"] = left_prom
         features[f"{prefix}_left_peak_width"] = left_w
-        features[f"{prefix}_left_peak_Q"] = left_f / max(left_w, eps)
+        features[f"{prefix}_left_peak_Q"] = _safe_ratio(left_f, left_w, eps, f"{prefix}_left_peak_Q")
 
         features[f"{prefix}_right_peak_freq"] = right_f
         features[f"{prefix}_right_peak_amp"] = right_amp
         features[f"{prefix}_right_peak_prominence"] = right_prom
         features[f"{prefix}_right_peak_width"] = right_w
-        features[f"{prefix}_right_peak_Q"] = right_f / max(right_w, eps)
+        features[f"{prefix}_right_peak_Q"] = _safe_ratio(right_f, right_w, eps, f"{prefix}_right_peak_Q")
 
         features[f"{prefix}_peak_separation"] = separation
         features[f"{prefix}_peak_balance_amp"] = amp_balance
@@ -510,22 +587,55 @@ def calculate_doublet_features(
         dip_w = pair["middle_dip_width"]
 
         dip_depth = max(min(left_amp, right_amp) - dip_amp, 0.0)
-        dip_depth_norm = dip_depth / max(min(abs(left_amp), abs(right_amp)), eps)
-        dip_relative_position = (dip_f - left_f) / max(separation, eps)
+        dip_depth_norm = _safe_ratio(
+            dip_depth,
+            min(abs(left_amp), abs(right_amp)),
+            eps,
+            f"{prefix}_dip_depth_norm",
+        )
+        dip_relative_position = _safe_ratio(
+            dip_f - left_f,
+            separation,
+            eps,
+            f"{prefix}_dip_relative_position",
+        )
         # Uses amp_balance so the score rewards balanced peak-dip-peak structures
-        doublet_score = dip_depth * amp_balance / max(separation, eps)
+        doublet_score = _safe_ratio(
+            dip_depth * amp_balance,
+            separation,
+            eps,
+            f"{prefix}_doublet_score",
+        )
 
         left_w_at_dip = pair.get("left_peak_width_at_middle_dip", 0.0)
         right_w_at_dip = pair.get("right_peak_width_at_middle_dip", 0.0)
-        width_balance_at_dip = min(abs(left_w_at_dip), abs(right_w_at_dip)) / max(
-            max(abs(left_w_at_dip), abs(right_w_at_dip)), eps,)
-        signed_width_imbalance_at_dip = (left_w_at_dip - right_w_at_dip) / max(
-            abs(left_w_at_dip) + abs(right_w_at_dip), eps,)
+        width_balance_at_dip = _safe_ratio(
+            min(abs(left_w_at_dip), abs(right_w_at_dip)),
+            max(abs(left_w_at_dip), abs(right_w_at_dip)),
+            eps,
+            f"{prefix}_peak_balance_width_at_middle_dip",
+        )
+        signed_width_imbalance_at_dip = _safe_ratio(
+            left_w_at_dip - right_w_at_dip,
+            abs(left_w_at_dip) + abs(right_w_at_dip),
+            eps,
+            f"{prefix}_signed_width_imbalance_at_middle_dip",
+        )
 
         features[f"{prefix}_left_peak_width_at_middle_dip"] = left_w_at_dip
-        features[f"{prefix}_left_peak_Q_at_middle_dip"] = left_f / max(left_w_at_dip, eps)
+        features[f"{prefix}_left_peak_Q_at_middle_dip"] = _safe_ratio(
+            left_f,
+            left_w_at_dip,
+            eps,
+            f"{prefix}_left_peak_Q_at_middle_dip",
+        )
         features[f"{prefix}_right_peak_width_at_middle_dip"] = right_w_at_dip
-        features[f"{prefix}_right_peak_Q_at_middle_dip"] = right_f / max(right_w_at_dip, eps)
+        features[f"{prefix}_right_peak_Q_at_middle_dip"] = _safe_ratio(
+            right_f,
+            right_w_at_dip,
+            eps,
+            f"{prefix}_right_peak_Q_at_middle_dip",
+        )
         features[f"{prefix}_peak_balance_width_at_middle_dip"] = width_balance_at_dip
         features[f"{prefix}_signed_width_imbalance_at_middle_dip"] = signed_width_imbalance_at_dip
 
@@ -533,7 +643,7 @@ def calculate_doublet_features(
         features[f"{prefix}_middle_dip_amp"] = dip_amp
         features[f"{prefix}_middle_dip_prominence"] = pair["middle_dip_prominence"]
         features[f"{prefix}_middle_dip_width"] = dip_w
-        features[f"{prefix}_middle_dip_Q"] = dip_f / max(dip_w, eps)
+        features[f"{prefix}_middle_dip_Q"] = _safe_ratio(dip_f, dip_w, eps, f"{prefix}_middle_dip_Q")
 
         features[f"{prefix}_dip_depth"] = dip_depth
         features[f"{prefix}_dip_depth_norm"] = dip_depth_norm
@@ -562,23 +672,34 @@ def calculate_doublet_features(
         )
 
     if 1 in main_peak_amps_by_band and 2 in main_peak_amps_by_band:
-        features["band1_to_band2_main_peak_amp_ratio"] = (
-            main_peak_amps_by_band[1] / max(main_peak_amps_by_band[2], eps)
+        features["band1_to_band2_main_peak_amp_ratio"] = _safe_ratio(
+            main_peak_amps_by_band[1],
+            main_peak_amps_by_band[2],
+            eps,
+            "band1_to_band2_main_peak_amp_ratio",
         )
     if 2 in main_peak_amps_by_band and 3 in main_peak_amps_by_band:
-        features["band2_to_band3_main_peak_amp_ratio"] = (
-            main_peak_amps_by_band[2] / max(main_peak_amps_by_band[3], eps)
+        features["band2_to_band3_main_peak_amp_ratio"] = _safe_ratio(
+            main_peak_amps_by_band[2],
+            main_peak_amps_by_band[3],
+            eps,
+            "band2_to_band3_main_peak_amp_ratio",
         )
     if 1 in main_peak_amps_by_band and 3 in main_peak_amps_by_band:
-        features["band1_to_band3_main_peak_amp_ratio"] = (
-            main_peak_amps_by_band[1] / max(main_peak_amps_by_band[3], eps)
+        features["band1_to_band3_main_peak_amp_ratio"] = _safe_ratio(
+            main_peak_amps_by_band[1],
+            main_peak_amps_by_band[3],
+            eps,
+            "band1_to_band3_main_peak_amp_ratio",
         )
 
-    return features
+    return _as_float32_feature_dict(features)
 
 
 def _safe_index(idx: float, n: int) -> int:
     """Convert a float index to an integer index within a valid range ."""
+    if n < 1:
+        raise ValueError(f"Signal length must be >= 1, got {n}")
     return int(np.clip(round(idx), 0, n - 1))
 
 
@@ -633,7 +754,9 @@ def calculate_doublet_area_features(
         middle_dip_left_ips, middle_dip_right_ips
     """
 
-    signal = np.asarray(signal, dtype=np.float32)
+    signal = np.asarray(signal, dtype=np.float32).ravel()
+    if signal.size == 0:
+        raise ValueError("signal must contain at least one value")
     features = {}
 
     for pair in selected_pairs:
@@ -675,7 +798,12 @@ def calculate_doublet_area_features(
             )
 
             features[f"{prefix}_main_peak_area"] = area
-            features[f"{prefix}_main_peak_area_norm"] = area / max(peak_prom * peak_width, eps)
+            features[f"{prefix}_main_peak_area_norm"] = _safe_ratio(
+                area,
+                peak_prom * peak_width,
+                eps,
+                f"{prefix}_main_peak_area_norm",
+            )
 
         # -------------------------
         # Peak pair for left/right peak area
@@ -709,7 +837,12 @@ def calculate_doublet_area_features(
         )
 
         features[f"{prefix}_left_peak_area"] = left_area
-        features[f"{prefix}_left_peak_area_norm"] = left_area / max(left_prom * left_width, eps)
+        features[f"{prefix}_left_peak_area_norm"] = _safe_ratio(
+            left_area,
+            left_prom * left_width,
+            eps,
+            f"{prefix}_left_peak_area_norm",
+        )
 
         # -------------------------
         # Right peak area
@@ -725,7 +858,12 @@ def calculate_doublet_area_features(
         )
 
         features[f"{prefix}_right_peak_area"] = right_area
-        features[f"{prefix}_right_peak_area_norm"] = right_area / max(right_prom * right_width, eps)
+        features[f"{prefix}_right_peak_area_norm"] = _safe_ratio(
+            right_area,
+            right_prom * right_width,
+            eps,
+            f"{prefix}_right_peak_area_norm",
+        )
 
         # -------------------------
         # Middle dip area
@@ -748,10 +886,13 @@ def calculate_doublet_area_features(
                 baseline=dip_amp,
                 mode="peak",
             )
-            left_height_at_dip = max(left_amp - dip_amp, eps)
+            left_height_at_dip = left_amp - dip_amp
             features[f"{prefix}_left_peak_area_at_middle_dip"] = left_area_at_dip
-            features[f"{prefix}_left_peak_area_at_middle_dip_norm"] = (
-                left_area_at_dip / max(left_height_at_dip * left_width_at_dip, eps)
+            features[f"{prefix}_left_peak_area_at_middle_dip_norm"] = _safe_ratio(
+                left_area_at_dip,
+                left_height_at_dip * left_width_at_dip,
+                eps,
+                f"{prefix}_left_peak_area_at_middle_dip_norm",
             )
 
         if "right_peak_left_ips_at_middle_dip" in pair and "right_peak_right_ips_at_middle_dip" in pair:
@@ -762,10 +903,13 @@ def calculate_doublet_area_features(
                 baseline=dip_amp,
                 mode="peak",
             )
-            right_height_at_dip = max(right_amp - dip_amp, eps)
+            right_height_at_dip = right_amp - dip_amp
             features[f"{prefix}_right_peak_area_at_middle_dip"] = right_area_at_dip
-            features[f"{prefix}_right_peak_area_at_middle_dip_norm"] = (
-                right_area_at_dip / max(right_height_at_dip * right_width_at_dip, eps)
+            features[f"{prefix}_right_peak_area_at_middle_dip_norm"] = _safe_ratio(
+                right_area_at_dip,
+                right_height_at_dip * right_width_at_dip,
+                eps,
+                f"{prefix}_right_peak_area_at_middle_dip_norm",
             )
 
         # For dips, prominence is measured on -signal.
@@ -781,7 +925,12 @@ def calculate_doublet_area_features(
         )
 
         features[f"{prefix}_middle_dip_area"] = dip_area
-        features[f"{prefix}_middle_dip_area_norm"] = dip_area / max(dip_prom * dip_width, eps)
+        features[f"{prefix}_middle_dip_area_norm"] = _safe_ratio(
+            dip_area,
+            dip_prom * dip_width,
+            eps,
+            f"{prefix}_middle_dip_area_norm",
+        )
 
         # -------------------------
         # Doublet valley area
@@ -802,8 +951,11 @@ def calculate_doublet_area_features(
         peak_separation = right_f - left_f
 
         features[f"{prefix}_doublet_valley_area"] = doublet_valley_area
-        features[f"{prefix}_doublet_valley_area_norm"] = (
-            doublet_valley_area / max(dip_depth * peak_separation, eps)
+        features[f"{prefix}_doublet_valley_area_norm"] = _safe_ratio(
+            doublet_valley_area,
+            dip_depth * peak_separation,
+            eps,
+            f"{prefix}_doublet_valley_area_norm",
         )
 
-    return features
+    return _as_float32_feature_dict(features)

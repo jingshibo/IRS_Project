@@ -29,6 +29,10 @@ Spectral-style statistics:
 Relation to derivative features:
     These features are intentionally global. Derivative_Features.py measures local doublet and
     inter-band shape, so similar ideas such as slope or zero crossing are measured at different scales.
+
+Fail-fast behavior:
+    Near-zero denominators intentionally raise errors so degenerate samples, such as constant or
+    all-zero signals, are visible during data checks instead of being silently converted to zeros.
 """
 
 
@@ -58,7 +62,10 @@ def calculate_global_features(channel_values: np.ndarray, channel_name: str) -> 
     if channel_values.ndim != 2:
         raise ValueError(f"channel_values must have shape [N, L], got {channel_values.shape}")
 
-    n_samples, signal_length = channel_values.shape
+    signal_length = channel_values.shape[1]
+    if signal_length < 2:
+        raise ValueError(f"Signal length must be >= 2, got {signal_length}")
+
     centered = channel_values - channel_values.mean(axis=1, keepdims=True)
     std = channel_values.std(axis=1)
     q25 = np.percentile(channel_values, 25.0, axis=1)
@@ -91,6 +98,8 @@ def calculate_global_features(channel_values: np.ndarray, channel_name: str) -> 
         magnitude_sum,
     )
     spectral_bandwidth_std = np.sqrt(np.maximum(spectral_bandwidth_var, 0.0))
+    argmax_frac = np.argmax(channel_values, axis=1) / np.float32(signal_length - 1)
+    argmin_frac = np.argmin(channel_values, axis=1) / np.float32(signal_length - 1)
 
     feature_arrays = [
         channel_values.mean(axis=1),
@@ -108,8 +117,8 @@ def calculate_global_features(channel_values: np.ndarray, channel_name: str) -> 
         slope,
         skewness,
         kurtosis_excess,
-        np.argmax(channel_values, axis=1),
-        np.argmin(channel_values, axis=1),
+        argmax_frac,
+        argmin_frac,
         dominant_freq_bin,
         spectral_centroid,
         spectral_bandwidth_std,
