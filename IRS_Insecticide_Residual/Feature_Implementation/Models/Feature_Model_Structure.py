@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-feature_mlp_hidden = (256, 128)
+feature_mlp_hidden = (512, 256, 128)
 feature_mlp_dropout = 0.2
 feature_mlp_num_classes = 3
 feature_mlp_leaky_relu_slope = 0.05
@@ -44,3 +44,4 @@ class FeatureMLPClassifier(nn.Module):
         if x.ndim != 2:
             raise ValueError(f"FeatureMLPClassifier expects x shape [N, F], got {tuple(x.shape)}")
         return self.classifier(x)
+

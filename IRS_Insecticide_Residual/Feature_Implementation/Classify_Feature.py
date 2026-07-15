@@ -3,8 +3,10 @@
 # PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # if PROJECT_ROOT not in sys.path:
 #     sys.path.insert(0, PROJECT_ROOT)
+import numpy as np
 import pandas as pd
 from IRS_Insecticide_Residual.Feature_Implementation import Feature_Preprocessing
+from IRS_Insecticide_Residual.Feature_Implementation.Models import Feature_Sklearn_Training
 from IRS_Insecticide_Residual.Feature_Implementation.Models import Feature_Training
 from IRS_Insecticide_Residual.Feature_Implementation.Functions import Feature_Extraction
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
@@ -117,7 +119,7 @@ x_trainval_features, x_test_features, feature_names, feature_metadata = (
         x_test_signal=x_test_signal,
         band_edges=BAND_EDGES,
         channel_names=selected_value_types,
-        signal_channel_index=ORIGINAL_CHANNEL_INDEFeatureX,
+        signal_channel_index=ORIGINAL_CHANNEL_INDEX,
         first_derivative_channel_index=FIRST_DERIVATIVE_CHANNEL_INDEX,
         second_derivative_channel_index=SECOND_DERIVATIVE_CHANNEL_INDEX,
         peak_selection=PEAK_SELECTION,
@@ -137,30 +139,104 @@ x_trainval_features, x_test_features, feature_names, feature_metadata = (
     )
 )
 
-trainval_detected_peak_dip = feature_metadata["trainval"]["detected_peak_dip"]
-trainval_peak_dip_pairs = feature_metadata["trainval"]["peak_dip_pairs"]
-test_detected_peak_dip = feature_metadata["test"]["detected_peak_dip"]
-test_peak_dip_pairs = feature_metadata["test"]["peak_dip_pairs"]
-global_feature_names = feature_metadata["trainval"]["global_feature_names"]
-peak_dip_feature_names = feature_metadata["trainval"]["peak_dip_feature_names"]
-derivative_feature_names = feature_metadata["trainval"]["derivative_feature_names"]
-
-print("Signal train/val shape:", x_trainval_signal.shape)
-print("Feature train/val shape:", x_trainval_features.shape)
-print("Signal holdout shape:", x_test_signal.shape)
-print("Feature holdout shape:", x_test_features.shape)
-print("Global feature count:", len(global_feature_names))
-print("Peak/dip feature count:", len(peak_dip_feature_names))
-print("Derivative feature count:", len(derivative_feature_names))
-print("Total extracted feature count:", len(feature_names))
+# access feature information
+# trainval_detected_peak_dip = feature_metadata["trainval"]["detected_peak_dip"]
+# trainval_peak_dip_pairs = feature_metadata["trainval"]["peak_dip_pairs"]
+# test_detected_peak_dip = feature_metadata["test"]["detected_peak_dip"]
+# test_peak_dip_pairs = feature_metadata["test"]["peak_dip_pairs"]
+# global_feature_names = feature_metadata["trainval"]["global_feature_names"]
+# peak_dip_feature_names = feature_metadata["trainval"]["peak_dip_feature_names"]
+# derivative_feature_names = feature_metadata["trainval"]["derivative_feature_names"]
 
 
 ## create dataset
-# cv_indices = Preprocessing.build_stratified_cv_indices(
-#     y_trainval,
-#     n_splits=5,
-#     random_seed=RANDOM_SEED,
-# )
+FEATURE_REDUCTION_METHOD = "pca"  # use "none" or "pca"
+PCA_N_COMPONENTS = 0.97  # keep enough PCA components to explain this fraction of variance
+if FEATURE_REDUCTION_METHOD not in ("none", "pca"):
+    raise ValueError("FEATURE_REDUCTION_METHOD must be 'none' or 'pca'")
+
+feature_cv_folds = Feature_Preprocessing.build_feature_cv_folds(
+    x_trainval_features,
+    y_trainval,
+    n_splits=5,
+    random_seed=RANDOM_SEED,
+    use_pca=(FEATURE_REDUCTION_METHOD == "pca"),
+    pca_n_components=PCA_N_COMPONENTS,
+)
+
+# pca result details
+if FEATURE_REDUCTION_METHOD == "pca":
+    for fold_data in feature_cv_folds:
+        pca_details = fold_data["pca_details"]
+        print(
+            f"PCA fold {fold_data['fold']}: "
+            f"n_components={pca_details['n_components']}, "
+            f"total_explained_variance_ratio={pca_details['total_explained_variance_ratio']:.4f}"
+        )
+
+
+## model training
+MODEL_NAME = "mlp"  # use "mlp", "lda", "svm", "random_forest", or "knn"
+if MODEL_NAME not in ("mlp", "lda", "svm", "random_forest", "rf", "knn"):
+    raise ValueError("MODEL_NAME must be 'mlp', 'lda', 'svm', 'random_forest', 'rf', or 'knn'")
+
+if MODEL_NAME == "mlp":
+    train_out = Feature_Training.train_feature_mlp_cv(
+        cv_folds=feature_cv_folds,
+        class_order=class_order,
+        epochs=100,
+        batch_size=32,
+        lr=1e-3,
+        weight_decay=1e-4,
+        label_smoothing=0.1,
+        patience=25,
+        tensorboard_log_dir="runs/feature_mlp_cv",
+    )
+else:
+    train_out = Feature_Sklearn_Training.train_sklearn_feature_cv(
+        cv_folds=feature_cv_folds,
+        model_name=MODEL_NAME,
+        class_order=class_order,
+        random_seed=RANDOM_SEED,
+    )
+print("Mean best val acc:", train_out["mean_best_val_acc"])
+print("Class index mapping:", train_out["label_to_idx"])
+print("Model name:", MODEL_NAME)
+
+
+## holdout test evaluation using CV model ensemble
+test_prob_by_fold = []
+for fold_data, fold_result in zip(feature_cv_folds, train_out["fold_results"]):
+    x_test_fold = fold_data["feature_scaler"].transform(x_test_features).astype(np.float32, copy=False)
+    if fold_data.get("feature_reducer") is not None:
+        x_test_fold = fold_data["feature_reducer"].transform(x_test_fold).astype(np.float32, copy=False)
+
+    test_prob_by_fold.append(
+        (
+            Feature_Training.predict_prob(
+                fold_result.model,
+                x_test_fold,
+                device=train_out["device"],
+            )
+            if MODEL_NAME == "mlp"
+            else Feature_Sklearn_Training.predict_prob(
+                fold_result.model,
+                x_test_fold,
+                label_to_idx=train_out["label_to_idx"],
+            )
+        )
+    )
+
+test_prob = np.mean(np.stack(test_prob_by_fold, axis=0), axis=0)
+test_pred_idx = np.argmax(test_prob, axis=1)
+test_true_idx = np.asarray([train_out["label_to_idx"][label] for label in y_test], dtype=np.int64)
+test_acc = float(np.mean(test_pred_idx == test_true_idx))
+test_pred_label = [train_out["idx_to_label"][int(idx)] for idx in test_pred_idx]
+
+print("Holdout test acc:", test_acc)
+
+
+## plotting
 # signal_cv_folds = Preprocessing.build_normalized_cv_folds(
 #     x_trainval_signal,
 #     y_trainval,
@@ -169,34 +245,6 @@ print("Total extracted feature count:", len(feature_names))
 #     clip_max_value=None,
 #     cv_indices=cv_indices,
 # )
-# feature_cv_folds = Feature_Preprocessing.build_normalized_feature_cv_folds(
-#     x_trainval_features,
-#     y_trainval,
-#     n_splits=5,
-#     random_seed=RANDOM_SEED,
-#     cv_indices=cv_indices,
-# )
-#
-#
-# ## model training
-# model_name = "feature_mlp_classifier"
-# train_out = Feature_Training.train_feature_mlp_cv(
-#     cv_folds=feature_cv_folds,
-#     class_order=class_order,
-#     epochs=100,
-#     batch_size=32,
-#     lr=1e-3,
-#     weight_decay=1e-4,
-#     label_smoothing=0.1,
-#     patience=25,
-#     tensorboard_log_dir="runs/feature_mlp_cv",
-# )
-# print("Mean best val acc:", train_out["mean_best_val_acc"])
-# print("Class index mapping:", train_out["label_to_idx"])
-# print("Model name:", model_name)
-#
-#
-# ## plotting
 # PLOT_OPTIONS = {
 #     "threshold_hits": False,
 #     "classification_examples": False,

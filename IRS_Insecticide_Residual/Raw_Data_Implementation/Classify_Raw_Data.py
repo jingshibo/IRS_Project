@@ -5,6 +5,7 @@
 #     sys.path.insert(0, PROJECT_ROOT)
 import importlib
 from datetime import datetime
+import numpy as np
 import pandas as pd
 from IRS_Insecticide_Residual.Raw_Data_Implementation import Grid_Search
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Models import Model_Structure
@@ -121,13 +122,44 @@ print("Class index mapping:", train_out["label_to_idx"])
 print("Model name:", model_name)
 
 
+## holdout test evaluation using CV model ensemble
+test_prob_by_fold = []
+for fold_data, fold_result in zip(cv_folds, train_out["fold_results"]):
+    x_test_fold = np.asarray(x_test, dtype=np.float32).copy()
+    for channel_idx, scaler in enumerate(fold_data["scalers"]):
+        x_test_fold[:, channel_idx, :] = scaler.transform(x_test_fold[:, channel_idx, :]).astype(
+            np.float32,
+            copy=False,
+        )
+    
+    clip_max_value = fold_data.get("clip_max_value")
+    if clip_max_value is not None:
+        x_test_fold = np.clip(x_test_fold, a_min=None, a_max=clip_max_value).astype(np.float32, copy=False)
+
+    test_prob_by_fold.append(
+        Model_Training.predict_prob(
+            fold_result.model,
+            x_test_fold,
+            device=train_out["device"],
+        )
+    )
+
+test_prob = np.mean(np.stack(test_prob_by_fold, axis=0), axis=0)
+test_pred_idx = np.argmax(test_prob, axis=1)
+test_true_idx = np.asarray([train_out["label_to_idx"][label] for label in y_test], dtype=np.int64)
+test_acc = float(np.mean(test_pred_idx == test_true_idx))
+test_pred_label = [train_out["idx_to_label"][int(idx)] for idx in test_pred_idx]
+
+print("Holdout test acc:", test_acc)
+
+
 ## plotting
 plot_options = {
     "threshold_hits": False,
     "classification_examples": False,
     "certain_samples": False,
     "mean_std_overview": False,
-    "random_sample_overview": True,
+    "random_sample_overview": False,
     "normalized_data_inspection": False,
 }
 
@@ -281,6 +313,4 @@ if run_grid_search:
     print("Top-100 parameter frequency summary dict:", grid_top100_param_freq)
     Grid_Search.print_top_param_frequencies(grid_out, top_k=100, include_model_name=True)
     print("Best grid-search trial:", grid_out["best_trial"])
-
-
 
