@@ -15,7 +15,7 @@ detect_peaks_and_dips():
 
 select_band_peak_dip_pairs():
     Converts raw peak/dip detections into fixed candidates per band. It keeps the main peak, optional
-    left/right doublet peaks, and the middle dip between them so later feature functions use a
+    left/right doublet peaks, and the middle dip between them so later feature Functions use a
     consistent band-wise structure.
 
 calculate_doublet_features():

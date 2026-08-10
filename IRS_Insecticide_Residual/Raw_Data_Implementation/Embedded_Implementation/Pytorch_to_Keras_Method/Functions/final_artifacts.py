@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+from typing import Sequence
+
+import numpy as np
+import tensorflow as tf
+import torch
+from sklearn.preprocessing import StandardScaler
+
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import (
+    torch_to_keras_input,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.config import (
+    PytorchToKerasConfig,
+)
+
+
+def save_final_artifacts(
+    pytorch_model: torch.nn.Module,
+    keras_model: tf.keras.Model,
+    config: PytorchToKerasConfig,
+    final_epochs: int,
+    epoch_selection: dict[str, object],
+    label_to_idx: dict[str, int],
+    idx_to_label: dict[int, str],
+    x_train_norm: np.ndarray,
+    x_test_norm: np.ndarray,
+    y_test: np.ndarray,
+    y_test_labels: Sequence[str],
+    torch_pred_idx: np.ndarray,
+    torch_prob: np.ndarray,
+    torch_logits: np.ndarray,
+    keras_pred_idx: np.ndarray,
+    keras_prob: np.ndarray,
+    keras_logits: np.ndarray,
+    scalers: Sequence[StandardScaler],
+    removed_zero_sample_indices: Sequence[int],
+    torch_test_accuracy: float,
+    keras_test_accuracy: float,
+    parity: dict[str, float],
+    train_history: dict[str, list[float]],
+) -> dict[str, Path]:
+    """Save artifacts needed to audit conversion and deploy through TFLite."""
+    output_dir = Path(config.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pytorch_checkpoint_path = output_dir / "shared_backbone_final.pth"
+    torch.save(
+        {
+            "state_dict": pytorch_model.state_dict(),
+            "model_name": config.model_name,
+            "input_length": int(x_train_norm.shape[2]),
+            "in_channels": int(x_train_norm.shape[1]),
+            "num_classes": len(label_to_idx),
+            "class_order": list(config.class_order),
+            "label_to_idx": label_to_idx,
+            "idx_to_label": idx_to_label,
+            "final_epochs": int(final_epochs),
+            "train_history": train_history,
+            "config": asdict(config),
+        },
+        pytorch_checkpoint_path,
+    )
+
+    keras_model_path = output_dir / "shared_backbone_final.keras"
+    keras_model.save(keras_model_path)
+
+    representative = x_train_norm[: min(config.representative_count, len(x_train_norm))]
+    representative_path = output_dir / "representative_final.npy"
+    np.save(representative_path, representative.astype(np.float32, copy=False))
+
+    mean = np.stack([np.asarray(scaler.mean_, dtype=np.float32) for scaler in scalers], axis=0)
+    scale = np.stack([np.asarray(scaler.scale_, dtype=np.float32) for scaler in scalers], axis=0)
+    scalers_path = output_dir / "scalers_final.npz"
+    np.savez(scalers_path, mean=mean, scale=scale)
+
+    predictions_path = output_dir / "test_predictions_final.npz"
+    np.savez(
+        predictions_path,
+        y_true_idx=y_test,
+        y_true_label=np.asarray(y_test_labels),
+        torch_pred_idx=torch_pred_idx,
+        torch_pred_label=np.asarray([idx_to_label[int(idx)] for idx in torch_pred_idx]),
+        torch_prob=torch_prob.astype(np.float32, copy=False),
+        torch_logits=torch_logits.astype(np.float32, copy=False),
+        keras_pred_idx=keras_pred_idx,
+        keras_pred_label=np.asarray([idx_to_label[int(idx)] for idx in keras_pred_idx]),
+        keras_prob=keras_prob.astype(np.float32, copy=False),
+        keras_logits=keras_logits.astype(np.float32, copy=False),
+        x_test_norm_pytorch_layout=x_test_norm.astype(np.float32, copy=False),
+        x_test_norm_keras_layout=torch_to_keras_input(x_test_norm).astype(np.float32, copy=False),
+    )
+
+    metadata = {
+        "model_name": config.model_name,
+        "primary_training_framework": "pytorch",
+        "deployment_model_format": "keras",
+        "pytorch_checkpoint_path": str(pytorch_checkpoint_path),
+        "keras_model_path": str(keras_model_path),
+        "class_order": list(config.class_order),
+        "label_to_idx": label_to_idx,
+        "idx_to_label": {str(k): v for k, v in idx_to_label.items()},
+        "selected_value_types": list(config.selected_value_types),
+        "signal_segments": [list(segment) for segment in config.signal_segments],
+        "spike_radius": config.spike_radius,
+        "spike_transform": config.spike_transform,
+        "spike_method": config.spike_method,
+        "spike_n_sigmas": config.spike_n_sigmas,
+        "spike_k": config.spike_k,
+        "spike_min_threshold": config.spike_min_threshold,
+        "savgol_window_length": config.savgol_window_length,
+        "savgol_polyorder": config.savgol_polyorder,
+        "savgol_deriv": config.savgol_deriv,
+        "savgol_mode": config.savgol_mode,
+        "downsample_step": config.downsample_step,
+        "downsample_offset": config.downsample_offset,
+        "rolling_window_size": config.rolling_window_size,
+        "random_seed": config.random_seed,
+        "test_size": config.test_size,
+        "final_epochs": int(final_epochs),
+        "epoch_selection": epoch_selection,
+        "batch_size": config.batch_size,
+        "lr": config.lr,
+        "weight_decay": config.weight_decay,
+        "label_smoothing": config.label_smoothing,
+        "use_lr_scheduler": config.use_lr_scheduler,
+        "final_use_train_loss_scheduler": config.final_use_train_loss_scheduler,
+        "scheduler_factor": config.scheduler_factor,
+        "scheduler_patience": config.scheduler_patience,
+        "scheduler_min_lr": config.scheduler_min_lr,
+        "random_shift_max_points": config.random_shift_max_points,
+        "random_shift_fill_mode": config.random_shift_fill_mode,
+        "clip_max_value": config.clip_max_value,
+        "match_pytorch_flatten": config.match_pytorch_flatten,
+        "torch_test_accuracy": torch_test_accuracy,
+        "keras_test_accuracy": keras_test_accuracy,
+        "pytorch_to_keras_logit_parity": parity,
+        "train_history": train_history,
+        "removed_zero_sample_indices": list(removed_zero_sample_indices),
+        "pytorch_input_shape": list(x_train_norm.shape[1:]),
+        "keras_input_shape": [x_train_norm.shape[2], x_train_norm.shape[1]],
+        "scaler_mean_shape": list(mean.shape),
+        "scaler_scale_shape": list(scale.shape),
+        "config": asdict(config),
+    }
+    metadata_path = output_dir / "deployment_metadata_final.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    return {
+        "pytorch_checkpoint": pytorch_checkpoint_path,
+        "keras_model": keras_model_path,
+        "representative": representative_path,
+        "scalers": scalers_path,
+        "predictions": predictions_path,
+        "metadata": metadata_path,
+    }

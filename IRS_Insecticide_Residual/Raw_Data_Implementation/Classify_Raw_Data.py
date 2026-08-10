@@ -13,6 +13,7 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Models import Model_Traini
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Functions import Viewing
 
+
 ## load data
 excel_path = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 df = pd.read_excel(excel_path, sheet_name=0)

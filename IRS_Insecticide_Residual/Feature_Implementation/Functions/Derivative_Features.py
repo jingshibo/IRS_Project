@@ -768,7 +768,7 @@ def calculate_within_band_second_derivative_features(
     window_radius:
         Number of points on each side of the main peak used for local curvature features.
     eps:
-        Small value kept for API consistency with other derivative feature functions.
+        Small value kept for API consistency with other derivative feature Functions.
 
     Returns
     -------
@@ -1009,7 +1009,7 @@ def calculate_second_derivative_features(
     """
     Calculate second-derivative curvature features within bands and, optionally, between bands.
 
-    This is the public second-derivative wrapper combining the two split second-derivative functions.
+    This is the public second-derivative wrapper combining the two split second-derivative Functions.
 
     The second derivative describes curvature:
         negative values around peak tops indicate concave-down sharpness,

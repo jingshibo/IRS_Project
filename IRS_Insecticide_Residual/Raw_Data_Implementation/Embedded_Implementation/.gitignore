@@ -1,0 +1,9 @@
+**/artifacts/
+*.keras
+*.tflite
+*.pth
+*.pt
+*.npy
+*.npz
+__pycache__/
+
