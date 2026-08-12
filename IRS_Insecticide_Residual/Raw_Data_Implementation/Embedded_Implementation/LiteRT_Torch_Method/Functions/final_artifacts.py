@@ -42,6 +42,7 @@ def save_final_artifacts(
     tflite_test_accuracy: Optional[float] = None,
     tflite_parity: Optional[dict[str, float]] = None,
     tflite_interpreter_metadata: Optional[dict[str, object]] = None,
+    tflite_validation_results: Optional[dict[str, dict[str, object]]] = None,
 ) -> dict[str, Path]:
     """Save artifacts needed to audit LiteRT Torch conversion and deploy."""
     output_dir = Path(config.output_dir)
@@ -93,7 +94,38 @@ def save_final_artifacts(
         prediction_payload["tflite_pred_label"] = np.asarray([idx_to_label[int(idx)] for idx in tflite_pred_idx])
     if litert_edge_sample_logits is not None:
         prediction_payload["litert_edge_sample_logits"] = litert_edge_sample_logits.astype(np.float32, copy=False)
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            if result.get("logits") is not None:
+                prediction_payload[f"{variant_name}_logits"] = np.asarray(result["logits"], dtype=np.float32)
+            if result.get("prob") is not None:
+                prediction_payload[f"{variant_name}_prob"] = np.asarray(result["prob"], dtype=np.float32)
+            if result.get("pred_idx") is not None:
+                pred_idx = np.asarray(result["pred_idx"], dtype=np.int64)
+                prediction_payload[f"{variant_name}_pred_idx"] = pred_idx
+                prediction_payload[f"{variant_name}_pred_label"] = np.asarray(
+                    [idx_to_label[int(idx)] for idx in pred_idx]
+                )
     np.savez(predictions_path, **prediction_payload)
+
+    tflite_variant_summary = {}
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            tflite_variant_summary[variant_name] = {
+                "path": str(result.get("path")) if result.get("path") is not None else None,
+                "accuracy": result.get("accuracy"),
+                "accuracy_diff_vs_pytorch": result.get("accuracy_diff_vs_pytorch"),
+                "logit_parity": result.get("parity"),
+                "interpreter_metadata": result.get("interpreter_metadata"),
+            }
+    comparison_summary = {
+        "original_pytorch": {
+            "accuracy": torch_test_accuracy,
+            "accuracy_diff_vs_pytorch": 0.0,
+            "path": str(pytorch_checkpoint_path),
+        },
+        **tflite_variant_summary,
+    }
 
     metadata = {
         "model_name": config.model_name,
@@ -102,7 +134,7 @@ def save_final_artifacts(
         "pytorch_checkpoint_path": str(pytorch_checkpoint_path),
         "tflite_path": str(tflite_path) if tflite_path is not None else None,
         "quantized_tflite_path": str(quantized_tflite_path) if quantized_tflite_path is not None else None,
-        "quantize_recipe": config.quantize_recipe,
+        "quantize_recipes": list(config.quantize_recipes),
         "class_order": list(config.class_order),
         "label_to_idx": label_to_idx,
         "idx_to_label": {str(k): v for k, v in idx_to_label.items()},
@@ -142,6 +174,8 @@ def save_final_artifacts(
         "litert_edge_sample_parity": litert_edge_sample_parity,
         "tflite_logit_parity": tflite_parity,
         "tflite_interpreter_metadata": tflite_interpreter_metadata,
+        "tflite_variants": tflite_variant_summary,
+        "comparison_summary": comparison_summary,
         "train_history": train_history,
         "removed_zero_sample_indices": list(removed_zero_sample_indices),
         "pytorch_input_shape": list(x_train_norm.shape[1:]),
@@ -164,4 +198,8 @@ def save_final_artifacts(
         artifacts["tflite_model"] = Path(tflite_path)
     if quantized_tflite_path is not None:
         artifacts["quantized_tflite_model"] = Path(quantized_tflite_path)
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            if result.get("path") is not None:
+                artifacts[f"{variant_name}_model"] = Path(result["path"])
     return artifacts

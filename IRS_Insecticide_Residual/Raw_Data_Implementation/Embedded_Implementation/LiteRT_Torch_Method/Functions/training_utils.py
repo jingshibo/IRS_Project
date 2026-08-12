@@ -36,10 +36,11 @@ def build_initialized_pytorch_model(
     device: torch.device,
 ) -> OneDCNNClassifier:
     """Create OneDCNNClassifier and initialize LazyLinear layers."""
+    # The helper sends a dummy input through the model once so the LazyLinear layers become initialized before training.
     model = OneDCNNClassifier(in_channels=in_channels, num_classes=num_classes).to(device)
-    model.eval()
-    with torch.no_grad():
-        model(torch.zeros(1, in_channels, input_length, dtype=torch.float32, device=device))
+    model.eval() # Because this dummy pass is not training.
+    with torch.no_grad(): # Because we do not need gradients for this dummy pass.
+        model(torch.zeros(1, in_channels, input_length, dtype=torch.float32, device=device)) # runs one dummy input through the model
     return model
 
 
@@ -88,12 +89,17 @@ def choose_final_epochs(
     )
 
     best_epochs = [int(fold_result.best_epoch) + 1 for fold_result in train_out["fold_results"]]
-    final_epochs = max(int(np.round(np.median(np.asarray(best_epochs, dtype=np.int64)))), 1)
+    sorted_best_epochs = sorted(best_epochs) # select the second-largest epoch from the PyTorch CV results, to avoid overfitting
+    if len(sorted_best_epochs) < 2:
+        final_epochs = max(int(sorted_best_epochs[0]), 1)
+    else:
+        final_epochs = max(int(sorted_best_epochs[-2]), 1)
     print(f"PyTorch CV best epochs: {best_epochs}")
-    print(f"Using final_epochs={final_epochs} from median PyTorch CV best epoch.")
+    print(f"Using final_epochs={final_epochs} from second-largest PyTorch CV best epoch.")
     return final_epochs, {
-        "source": "pytorch_cv_median_best_epoch",
+        "source": "pytorch_cv_second_largest_best_epoch",
         "best_epochs": best_epochs,
+        "sorted_best_epochs": sorted_best_epochs,
         "final_epochs": final_epochs,
         "mean_best_val_acc": float(train_out["mean_best_val_acc"]),
     }
@@ -110,7 +116,7 @@ def train_final_pytorch_model(
         raise ValueError("This LiteRT Torch path currently supports only shared_backbone_2ch.")
 
     device = resolve_device(config.device)
-    model = build_initialized_pytorch_model(
+    model = build_initialized_pytorch_model( # Creates the PyTorch CNN model for final training.
         input_length=x_train_norm.shape[2],
         in_channels=x_train_norm.shape[1],
         num_classes=len(config.class_order),

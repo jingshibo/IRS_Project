@@ -55,8 +55,12 @@ edge_model.export("model.tflite")
 Install the current packages in the environment where you run conversion:
 
 ```bash
-pip install litert-torch ai-edge-litert
+pip install litert-torch ai-edge-litert ai-edge-quantizer
 ```
+
+`ai-edge-litert` is used for desktop validation of the exported `.tflite` file.
+`ai-edge-quantizer` is used for optional post-export quantization. TensorFlow is
+not required by this method.
 
 If the stable package has a conversion issue, try the nightly:
 
@@ -93,14 +97,19 @@ python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementati
 Default output folder:
 
 ```text
-IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/LiteRT_Torch_Method/artifacts/final_model
+LiteRT_Torch_Method/results
 ```
+
+The default path is computed from the location of `Functions/config.py`, so it
+does not depend on the current working directory used by PyCharm.
 
 Important outputs:
 
 ```text
 shared_backbone_final.pth
 shared_backbone_litert_float.tflite
+shared_backbone_litert_dynamic_wi8_afp32.tflite
+shared_backbone_litert_static_wi8_ai8.tflite
 representative_final.npy
 scalers_final.npz
 deployment_metadata_final.json
@@ -122,17 +131,25 @@ FINAL_USE_TRAIN_LOSS_SCHEDULER = True
 
 ## Optional Quantization
 
-The method can apply a no-calibration AI Edge Quantizer recipe after the float
-LiteRT export:
+The method applies both quantization recipes after the float LiteRT export so
+the results can be compared side by side:
 
 ```python
-QUANTIZE_RECIPE = "dynamic_wi8_afp32"
+QUANTIZE_RECIPES = ("dynamic_wi8_afp32", "static_wi8_ai8")
 ```
 
-For ESP32-S3, calibrated full-int8 W8A8 is usually the target. This script does
-not hide that behind a guessed API because AI Edge Quantizer calibration APIs
-are version-sensitive. First confirm the float LiteRT export and parity, then
-use a calibrated `static_wi8_ai8` quantization flow with `representative_final.npy`.
+This writes:
+
+```text
+shared_backbone_litert_dynamic_wi8_afp32.tflite
+shared_backbone_litert_static_wi8_ai8.tflite
+```
+
+`dynamic_wi8_afp32` uses int8 weights with float32 activations. `static_wi8_ai8`
+uses calibrated full-int8 weights and activations. The calibrated path uses
+`x_train_norm[:REPRESENTATIVE_COUNT]` as representative calibration data, reads
+the LiteRT model signature/input name, runs `Quantizer.calibrate(...)`, then
+writes the full-int8 `.tflite`.
 
 ## Validation
 
@@ -140,9 +157,24 @@ The script checks:
 
 ```text
 PyTorch logits vs LiteRT Torch edge_model sample logits
-PyTorch logits vs desktop LiteRT/TFLite interpreter logits
 holdout accuracy from PyTorch
-holdout accuracy from LiteRT/TFLite, when an interpreter is installed
+holdout accuracy from float TFLite
+holdout accuracy from dynamic weight-int8 TFLite
+holdout accuracy from calibrated full-int8 TFLite
+logit differences for each TFLite variant vs PyTorch
 ```
 
-Use `--skip-tflite-validation` only when no desktop interpreter is installed.
+The full arrays are saved in `test_predictions_final.npz`. The saved variant
+keys are:
+
+```text
+torch_logits
+float_logits
+half_quant_dynamic_wi8_afp32_logits
+full_quant_static_wi8_ai8_logits
+```
+
+The summary is saved in `deployment_metadata_final.json` under
+`comparison_summary`.
+
+Set `SKIP_TFLITE_VALIDATION = True` only when no desktop interpreter is installed.

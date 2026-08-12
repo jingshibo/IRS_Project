@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.config import (
     EmbeddedPipelineConfig,
 )
 
-DEFAULT_OUTPUT_DIR = (
-    "IRS_Insecticide_Residual/Raw_Data_Implementation/"
-    "Embedded_Implementation/LiteRT_Torch_Method/artifacts/final_model"
-)
+METHOD_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = str(METHOD_DIR / "Results")
 
 
-@dataclass(frozen=True, kw_only=True)
-class LiteRTTorchConfig(EmbeddedPipelineConfig):
+@dataclass(frozen=True, kw_only=True) #  Python automatically creates common class methods for you, especially __init__
+class LiteRTTorchConfig(EmbeddedPipelineConfig): # LiteRTTorchConfig inherits members from EmbeddedPipelineConfig
     """Configuration for final PyTorch training followed by LiteRT Torch export."""
 
     excel_path: str
@@ -41,4 +40,5 @@ class LiteRTTorchConfig(EmbeddedPipelineConfig):
     final_use_train_loss_scheduler: bool = False
     parity_sample_count: int = 128
     parity_warning_threshold: float = 1e-4
-    quantize_recipe: Optional[str] = None
+    quantize_recipes: tuple[str, ...] = ()
+    calibration_threads: int = 16

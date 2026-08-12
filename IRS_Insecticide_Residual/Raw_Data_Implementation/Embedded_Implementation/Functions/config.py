@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 
-@dataclass(frozen=True, kw_only=True)
-class EmbeddedPipelineConfig:
+@dataclass(frozen=True, kw_only=True) # frozen=True means after creation, the config cannot be changed.
+class EmbeddedPipelineConfig: # Mostly preprocessing defaults
     """Shared data/model configuration used by all embedded generation paths."""
 
     class_order: Sequence[str] = ("LOW", "TARGET", "HIGH")
