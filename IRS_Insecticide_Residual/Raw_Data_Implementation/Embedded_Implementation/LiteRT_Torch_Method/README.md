@@ -27,20 +27,20 @@ LiteRT_Torch_Method/
   final_model_training.py
   Functions/
     config.py
-    training_utils.py
     final_artifacts.py
     litert_export.py
+    validation_utils.py
 ```
 
-Shared files used by all embedded-generation methods:
+Shared files used by this method:
 
 ```text
-Embedded_Implementation/Functions/
+Embedded_Implementation/Shared_Functions/
   config.py
   data_pipeline.py
-  keras_model.py
-  export_tflite.py
-  deployment_artifacts.py
+  calibration.py
+  metrics.py
+  training_utils.py
 ```
 
 ## Requirements

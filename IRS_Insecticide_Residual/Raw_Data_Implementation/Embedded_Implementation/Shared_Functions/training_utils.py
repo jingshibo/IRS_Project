@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.config import (
-    LiteRTTorchConfig,
-)
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Models import Model_Training
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Models.Model_Structure import OneDCNNClassifier
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
@@ -36,16 +33,15 @@ def build_initialized_pytorch_model(
     device: torch.device,
 ) -> OneDCNNClassifier:
     """Create OneDCNNClassifier and initialize LazyLinear layers."""
-    # The helper sends a dummy input through the model once so the LazyLinear layers become initialized before training.
     model = OneDCNNClassifier(in_channels=in_channels, num_classes=num_classes).to(device)
-    model.eval() # Because this dummy pass is not training.
-    with torch.no_grad(): # Because we do not need gradients for this dummy pass.
-        model(torch.zeros(1, in_channels, input_length, dtype=torch.float32, device=device)) # runs one dummy input through the model
+    model.eval()
+    with torch.no_grad():
+        model(torch.zeros(1, in_channels, input_length, dtype=torch.float32, device=device))
     return model
 
 
 def choose_final_epochs(
-    config: LiteRTTorchConfig,
+    config: Any,
     x_trainval: np.ndarray,
     y_trainval_labels: np.ndarray,
 ) -> tuple[int, dict[str, object]]:
@@ -89,7 +85,7 @@ def choose_final_epochs(
     )
 
     best_epochs = [int(fold_result.best_epoch) + 1 for fold_result in train_out["fold_results"]]
-    sorted_best_epochs = sorted(best_epochs) # select the second-largest epoch from the PyTorch CV results, to avoid overfitting
+    sorted_best_epochs = sorted(best_epochs)
     if len(sorted_best_epochs) < 2:
         final_epochs = max(int(sorted_best_epochs[0]), 1)
     else:
@@ -109,14 +105,14 @@ def train_final_pytorch_model(
     x_train_norm: np.ndarray,
     y_train: np.ndarray,
     final_epochs: int,
-    config: LiteRTTorchConfig,
+    config: Any,
 ) -> tuple[OneDCNNClassifier, dict[str, list[float]], torch.device]:
     """Train one final PyTorch model on all trainval data without an inner validation split."""
     if config.model_name != "shared_backbone_2ch":
-        raise ValueError("This LiteRT Torch path currently supports only shared_backbone_2ch.")
+        raise ValueError("This embedded PyTorch final-training path supports only shared_backbone_2ch.")
 
     device = resolve_device(config.device)
-    model = build_initialized_pytorch_model( # Creates the PyTorch CNN model for final training.
+    model = build_initialized_pytorch_model(
         input_length=x_train_norm.shape[2],
         in_channels=x_train_norm.shape[1],
         num_classes=len(config.class_order),
@@ -221,12 +217,3 @@ def evaluate_pytorch_model(
     pred_idx = np.argmax(probs, axis=1).astype(np.int64)
     accuracy = float(np.mean(pred_idx == y_test))
     return accuracy, pred_idx, probs, logits
-
-
-def compute_logit_parity(reference_logits: np.ndarray, exported_logits: np.ndarray) -> dict[str, float]:
-    abs_diff = np.abs(reference_logits - exported_logits)
-    return {
-        "max_abs_diff": float(abs_diff.max()) if abs_diff.size else 0.0,
-        "mean_abs_diff": float(abs_diff.mean()) if abs_diff.size else 0.0,
-        "p95_abs_diff": float(np.percentile(abs_diff, 95)) if abs_diff.size else 0.0,
-    }

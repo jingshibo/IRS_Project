@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.config import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.config import (
     EmbeddedPipelineConfig,
 )
 

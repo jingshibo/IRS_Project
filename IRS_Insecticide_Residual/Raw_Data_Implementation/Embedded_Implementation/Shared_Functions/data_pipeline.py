@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.config import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.config import (
     EmbeddedPipelineConfig,
 )
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing

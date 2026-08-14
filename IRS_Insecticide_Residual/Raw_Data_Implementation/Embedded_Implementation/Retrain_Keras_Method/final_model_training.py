@@ -9,7 +9,7 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Re
     DEFAULT_OUTPUT_DIR,
     FinalTrainingConfig,
 )
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.data_pipeline import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.data_pipeline import (
     build_raw_multichannel_dataset,
     encode_labels,
     fit_transform_channel_scalers,
@@ -17,7 +17,14 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Fu
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Retrain_Keras_Method.Functions.final_artifacts import (
     save_final_artifacts,
 )
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.calibration import (
+    build_stratified_representative_indices,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.export_tflite import (
+    build_tflite_validation_placeholders,
+    export_keras_tflite_variants,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.keras_model import (
     torch_to_keras_input,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Retrain_Keras_Method.Functions.training_utils import (
@@ -27,6 +34,9 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Re
     fit_keras_model,
     set_random_seed,
     to_one_hot,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.tflite_utils import (
+    validate_keras_tflite_variant,
 )
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 
@@ -40,7 +50,7 @@ EXCEL_PATH = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
-# reruns Keras CV and uses the median best epoch for final training.
+# reruns Keras CV and uses the second-largest best epoch for final training.
 FINAL_EPOCHS = None
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100
@@ -59,9 +69,19 @@ RANDOM_SEED = 42
 RANDOM_SHIFT_MAX_POINTS = 5
 RANDOM_SHIFT_FILL_MODE = "wrap"
 REPRESENTATIVE_COUNT = 128
+PARITY_WARNING_THRESHOLD = 1e-4
 
 # Keep True for structural parity with the original PyTorch model.
 MATCH_PYTORCH_FLATTEN = True
+
+# Control the Keras/TFLite export configuration.
+TFLITE_VARIANTS = (
+    "float",
+    "dynamic_wi8_afp32",
+    "full_int8",
+)  # Save float, dynamic-range, and calibrated full-int8 models for comparison.
+SKIP_TFLITE_EXPORT = False  # Whether to skip exporting .tflite files after final Keras training.
+SKIP_TFLITE_VALIDATION = False  # Whether to skip desktop TFLite validation.
 
 FINAL_CONFIG = FinalTrainingConfig(
     excel_path=EXCEL_PATH,
@@ -83,6 +103,8 @@ FINAL_CONFIG = FinalTrainingConfig(
     match_pytorch_flatten=MATCH_PYTORCH_FLATTEN,
     random_seed=RANDOM_SEED,
     representative_count=REPRESENTATIVE_COUNT,
+    parity_warning_threshold=PARITY_WARNING_THRESHOLD,
+    tflite_variants=TFLITE_VARIANTS,
 )
 
 
@@ -104,7 +126,7 @@ x_trainval, x_test, y_trainval_labels, y_test_labels = Preprocessing.split_holdo
     test_size=config.test_size,
     random_seed=config.random_seed,
 )
-final_epochs = choose_final_epochs(config, x_trainval, y_trainval_labels)
+final_epochs, epoch_selection = choose_final_epochs(config, x_trainval, y_trainval_labels)
 
 x_train_norm, x_test_norm, scalers = fit_transform_channel_scalers(
     x_trainval,
@@ -113,6 +135,12 @@ x_train_norm, x_test_norm, scalers = fit_transform_channel_scalers(
 )
 y_train, label_to_idx, idx_to_label = encode_labels(y_trainval_labels, config.class_order)
 y_test = np.asarray([label_to_idx[label] for label in y_test_labels], dtype=np.int64)
+representative_indices = build_stratified_representative_indices(
+    y_train,
+    count=config.representative_count,
+    seed=config.random_seed,
+)
+representative_samples = x_train_norm[representative_indices]
 
 model = build_compiled_model(
     input_length=x_train_norm.shape[2],
@@ -128,7 +156,7 @@ history = fit_keras_model(
     config,
     epochs=final_epochs,
 )
-test_accuracy, test_pred_idx, test_prob = evaluate_model(
+test_accuracy, test_pred_idx, test_prob, test_logits = evaluate_model(
     model,
     torch_to_keras_input(x_test_norm),
     y_test,
@@ -136,10 +164,60 @@ test_accuracy, test_pred_idx, test_prob = evaluate_model(
 )
 print(f"Final holdout test accuracy: {test_accuracy:.4f}")
 
+
+# =========================
+# Export and validate TFLite variants from retrained Keras model
+# =========================
+tflite_variant_paths = {}
+tflite_validation_results = {}
+if not SKIP_TFLITE_EXPORT:
+    tflite_variant_paths = export_keras_tflite_variants(
+        keras_model=model,
+        output_dir=Path(config.output_dir),
+        variant_names=config.tflite_variants,
+        representative_samples=representative_samples,
+    )
+
+    if not SKIP_TFLITE_VALIDATION:
+        for variant_name, variant_path in tflite_variant_paths.items():
+            tflite_validation_results[variant_name] = validate_keras_tflite_variant(
+                variant_name=variant_name,
+                model_path=variant_path,
+                x_test_norm=x_test_norm,
+                y_test=y_test,
+                keras_logits=test_logits,
+                keras_accuracy=test_accuracy,
+                config=config,
+            )
+
+        print("TFLite variant comparison summary:")
+        print(f"  Retrained Keras accuracy: {test_accuracy:.4f}")
+        for variant_name, result in tflite_validation_results.items():
+            metadata = result["interpreter_metadata"]
+            print(
+                f"  {variant_name}: accuracy={result['accuracy']:.4f} "
+                f"accuracy_diff={result['accuracy_diff_vs_keras']:+.4f} "
+                f"max_abs_logit_diff={result['parity']['max_abs_diff']:.8g} "
+                f"input_dtype={metadata['input_dtype']} output_dtype={metadata['output_dtype']}"
+            )
+        print(
+            "  sample[0] retrained Keras logits: "
+            f"{np.array2string(test_logits[0], precision=6, suppress_small=False)}"
+        )
+        for variant_name, result in tflite_validation_results.items():
+            print(
+                f"  sample[0] {variant_name} logits: "
+                f"{np.array2string(result['logits'][0], precision=6, suppress_small=False)}"
+            )
+    else:
+        tflite_validation_results = build_tflite_validation_placeholders(tflite_variant_paths)
+
+
 artifacts = save_final_artifacts(
     model=model,
     config=config,
     final_epochs=final_epochs,
+    epoch_selection=epoch_selection,
     label_to_idx=label_to_idx,
     idx_to_label=idx_to_label,
     x_train_norm=x_train_norm,
@@ -148,10 +226,14 @@ artifacts = save_final_artifacts(
     y_test_labels=y_test_labels,
     test_pred_idx=test_pred_idx,
     test_prob=test_prob,
+    test_logits=test_logits,
+    representative_samples=representative_samples,
+    representative_indices=representative_indices,
     scalers=scalers,
     removed_zero_sample_indices=removed_zero_sample_indices,
     test_accuracy=test_accuracy,
     history=history,
+    tflite_validation_results=tflite_validation_results,
 )
 print("Saved final deployment artifacts:")
 for name, path in artifacts.items():

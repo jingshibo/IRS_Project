@@ -1,0 +1,631 @@
+{
+  "model_name": "shared_backbone_2ch",
+  "primary_training_framework": "pytorch",
+  "deployment_model_format": "keras_and_tflite",
+  "pytorch_checkpoint_path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.pth",
+  "keras_model_path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras",
+  "class_order": [
+    "LOW",
+    "TARGET",
+    "HIGH"
+  ],
+  "label_to_idx": {
+    "LOW": 0,
+    "TARGET": 1,
+    "HIGH": 2
+  },
+  "idx_to_label": {
+    "0": "LOW",
+    "1": "TARGET",
+    "2": "HIGH"
+  },
+  "selected_value_types": [
+    "original",
+    "first_diff_filtered",
+    "second_diff_filtered"
+  ],
+  "signal_segments": [
+    [
+      0,
+      1000
+    ],
+    [
+      1800,
+      3500
+    ]
+  ],
+  "spike_radius": 3,
+  "spike_transform": "sqrt",
+  "spike_method": "fast",
+  "spike_n_sigmas": 3.0,
+  "spike_k": 4.0,
+  "spike_min_threshold": 1000.0,
+  "savgol_window_length": 31,
+  "savgol_polyorder": 3,
+  "savgol_deriv": 0,
+  "savgol_mode": "mirror",
+  "downsample_step": 5,
+  "downsample_offset": 0,
+  "rolling_window_size": 31,
+  "random_seed": 42,
+  "test_size": 0.15,
+  "final_epochs": 50,
+  "epoch_selection": {
+    "source": "pytorch_cv_second_largest_best_epoch",
+    "best_epochs": [
+      50,
+      73,
+      41,
+      35,
+      26
+    ],
+    "sorted_best_epochs": [
+      26,
+      35,
+      41,
+      50,
+      73
+    ],
+    "final_epochs": 50,
+    "mean_best_val_acc": 0.948493010569383
+  },
+  "batch_size": 32,
+  "lr": 0.0001,
+  "weight_decay": 0.0001,
+  "label_smoothing": 0.3,
+  "use_lr_scheduler": true,
+  "final_use_train_loss_scheduler": false,
+  "scheduler_factor": 0.7,
+  "scheduler_patience": 5,
+  "scheduler_min_lr": 1e-06,
+  "random_shift_max_points": 5,
+  "random_shift_fill_mode": "wrap",
+  "clip_max_value": null,
+  "match_pytorch_flatten": true,
+  "torch_test_accuracy": 0.954177897574124,
+  "keras_test_accuracy": 0.954177897574124,
+  "pytorch_to_keras_logit_parity": {
+    "max_abs_diff": 0.004250526428222656,
+    "mean_abs_diff": 0.0003916819696314633,
+    "p95_abs_diff": 0.0009386778110638261
+  },
+  "tflite_variants_requested": [
+    "float",
+    "dynamic_wi8_afp32",
+    "full_int8"
+  ],
+  "tflite_variants": {
+    "float": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_float.tflite",
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "accuracy_diff_vs_keras": 0.0,
+      "logit_parity": {
+        "max_abs_diff": 0.0025224685668945312,
+        "mean_abs_diff": 0.00032772598206065595,
+        "p95_abs_diff": 0.0008077860111370683
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 0.0025224685668945312,
+        "mean_abs_diff": 0.00032772598206065595,
+        "p95_abs_diff": 0.0008077860111370683
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 0.001811295747756958,
+        "mean_abs_diff": 0.00021880863641854376,
+        "p95_abs_diff": 0.0005167067283764482
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.float32'>",
+        "input_quantization": [
+          0.0,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.float32'>",
+        "output_quantization": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "dynamic_wi8_afp32": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite",
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "accuracy_diff_vs_keras": 0.0,
+      "logit_parity": {
+        "max_abs_diff": 0.07391542196273804,
+        "mean_abs_diff": 0.011128642596304417,
+        "p95_abs_diff": 0.029265716671943665
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 0.07391542196273804,
+        "mean_abs_diff": 0.011128642596304417,
+        "p95_abs_diff": 0.029265716671943665
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 0.07469415664672852,
+        "mean_abs_diff": 0.011145036667585373,
+        "p95_abs_diff": 0.02918689325451851
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.float32'>",
+        "input_quantization": [
+          0.0,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.float32'>",
+        "output_quantization": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "full_int8": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_full_int8.tflite",
+      "accuracy": 0.9460916442048517,
+      "accuracy_diff_vs_pytorch": -0.008086253369272267,
+      "accuracy_diff_vs_keras": -0.008086253369272267,
+      "logit_parity": {
+        "max_abs_diff": 2.432488441467285,
+        "mean_abs_diff": 0.08544410765171051,
+        "p95_abs_diff": 0.21426570415496826
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 2.432488441467285,
+        "mean_abs_diff": 0.08544410765171051,
+        "p95_abs_diff": 0.21426570415496826
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 2.436738967895508,
+        "mean_abs_diff": 0.08546066284179688,
+        "p95_abs_diff": 0.21427762508392334
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.int8'>",
+        "input_quantization": [
+          0.15072204172611237,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.int8'>",
+        "output_quantization": [
+          0.014512529596686363,
+          -17.0
+        ]
+      }
+    }
+  },
+  "comparison_summary": {
+    "original_pytorch": {
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.pth"
+    },
+    "transferred_keras": {
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 0.004250526428222656,
+        "mean_abs_diff": 0.0003916819696314633,
+        "p95_abs_diff": 0.0009386778110638261
+      },
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras"
+    },
+    "float": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_float.tflite",
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "accuracy_diff_vs_keras": 0.0,
+      "logit_parity": {
+        "max_abs_diff": 0.0025224685668945312,
+        "mean_abs_diff": 0.00032772598206065595,
+        "p95_abs_diff": 0.0008077860111370683
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 0.0025224685668945312,
+        "mean_abs_diff": 0.00032772598206065595,
+        "p95_abs_diff": 0.0008077860111370683
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 0.001811295747756958,
+        "mean_abs_diff": 0.00021880863641854376,
+        "p95_abs_diff": 0.0005167067283764482
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.float32'>",
+        "input_quantization": [
+          0.0,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.float32'>",
+        "output_quantization": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "dynamic_wi8_afp32": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite",
+      "accuracy": 0.954177897574124,
+      "accuracy_diff_vs_pytorch": 0.0,
+      "accuracy_diff_vs_keras": 0.0,
+      "logit_parity": {
+        "max_abs_diff": 0.07391542196273804,
+        "mean_abs_diff": 0.011128642596304417,
+        "p95_abs_diff": 0.029265716671943665
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 0.07391542196273804,
+        "mean_abs_diff": 0.011128642596304417,
+        "p95_abs_diff": 0.029265716671943665
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 0.07469415664672852,
+        "mean_abs_diff": 0.011145036667585373,
+        "p95_abs_diff": 0.02918689325451851
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.float32'>",
+        "input_quantization": [
+          0.0,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.float32'>",
+        "output_quantization": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "full_int8": {
+      "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_full_int8.tflite",
+      "accuracy": 0.9460916442048517,
+      "accuracy_diff_vs_pytorch": -0.008086253369272267,
+      "accuracy_diff_vs_keras": -0.008086253369272267,
+      "logit_parity": {
+        "max_abs_diff": 2.432488441467285,
+        "mean_abs_diff": 0.08544410765171051,
+        "p95_abs_diff": 0.21426570415496826
+      },
+      "logit_parity_vs_pytorch": {
+        "max_abs_diff": 2.432488441467285,
+        "mean_abs_diff": 0.08544410765171051,
+        "p95_abs_diff": 0.21426570415496826
+      },
+      "logit_parity_vs_keras": {
+        "max_abs_diff": 2.436738967895508,
+        "mean_abs_diff": 0.08546066284179688,
+        "p95_abs_diff": 0.21427762508392334
+      },
+      "interpreter_metadata": {
+        "input_shape": [
+          1,
+          540,
+          3
+        ],
+        "input_dtype": "<class 'numpy.int8'>",
+        "input_quantization": [
+          0.15072204172611237,
+          0.0
+        ],
+        "output_shape": [
+          1,
+          3
+        ],
+        "output_dtype": "<class 'numpy.int8'>",
+        "output_quantization": [
+          0.014512529596686363,
+          -17.0
+        ]
+      }
+    }
+  },
+  "train_history": {
+    "train_loss": [
+      1.0137311843725352,
+      0.91084359058967,
+      0.8505649328231811,
+      0.8165431050153878,
+      0.7867306470870972,
+      0.776859487937047,
+      0.754697744662945,
+      0.7488737069643461,
+      0.7418353108259348,
+      0.7309246118252094,
+      0.7273206830024719,
+      0.7270061437900249,
+      0.7253792680226839,
+      0.7102188697228065,
+      0.7081056255560655,
+      0.7069676243341886,
+      0.7086812496185303,
+      0.7010420157359196,
+      0.6997997999191284,
+      0.696773283298199,
+      0.6945287190950834,
+      0.69366956949234,
+      0.6950840427325322,
+      0.6916717336728022,
+      0.6908163758424612,
+      0.6887739850924566,
+      0.6843824551655696,
+      0.6883927033497736,
+      0.6861527470441965,
+      0.6890134930610656,
+      0.6838501710158128,
+      0.6842146387467017,
+      0.6817190151948195,
+      0.6784234386224013,
+      0.675715866455665,
+      0.6776443417255695,
+      0.6768152933854323,
+      0.6755670556655297,
+      0.6740309403492855,
+      0.6724304997003996,
+      0.6777026699139521,
+      0.674652791940249,
+      0.671144516651447,
+      0.67326365342507,
+      0.669986315873953,
+      0.6706066425030048,
+      0.6719948869485122,
+      0.6732940050271842,
+      0.6700254311928382,
+      0.6684835314750671
+    ],
+    "train_acc": [
+      0.5620192307692308,
+      0.7288461538461538,
+      0.8048076923076923,
+      0.8519230769230769,
+      0.8826923076923077,
+      0.8836538461538461,
+      0.9139423076923077,
+      0.9259615384615385,
+      0.9360576923076923,
+      0.9447115384615384,
+      0.9466346153846154,
+      0.9427884615384615,
+      0.9519230769230769,
+      0.9610576923076923,
+      0.9677884615384615,
+      0.9658653846153846,
+      0.9701923076923077,
+      0.9697115384615385,
+      0.9764423076923077,
+      0.9759615384615384,
+      0.9807692307692307,
+      0.9778846153846154,
+      0.9778846153846154,
+      0.9802884615384615,
+      0.9831730769230769,
+      0.9831730769230769,
+      0.9841346153846153,
+      0.9846153846153847,
+      0.9865384615384616,
+      0.9822115384615384,
+      0.9884615384615385,
+      0.9884615384615385,
+      0.9865384615384616,
+      0.9908653846153846,
+      0.9923076923076923,
+      0.9918269230769231,
+      0.9908653846153846,
+      0.9899038461538462,
+      0.9923076923076923,
+      0.9927884615384616,
+      0.989423076923077,
+      0.99375,
+      0.9947115384615385,
+      0.9932692307692308,
+      0.9918269230769231,
+      0.9942307692307693,
+      0.9927884615384616,
+      0.9927884615384616,
+      0.99375,
+      0.9961538461538462
+    ],
+    "lr": [
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001,
+      0.0001
+    ]
+  },
+  "removed_zero_sample_indices": [
+    37,
+    71,
+    522,
+    577,
+    692,
+    720,
+    735,
+    740,
+    755,
+    771,
+    811
+  ],
+  "representative_indices_path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/representative_indices_final.npy",
+  "representative_count": 128,
+  "pytorch_input_shape": [
+    3,
+    540
+  ],
+  "keras_input_shape": [
+    540,
+    3
+  ],
+  "tflite_input_shape": [
+    1,
+    540,
+    3
+  ],
+  "scaler_mean_shape": [
+    3,
+    540
+  ],
+  "scaler_scale_shape": [
+    3,
+    540
+  ],
+  "config": {
+    "class_order": [
+      "LOW",
+      "TARGET",
+      "HIGH"
+    ],
+    "model_name": "shared_backbone_2ch",
+    "selected_value_types": [
+      "original",
+      "first_diff_filtered",
+      "second_diff_filtered"
+    ],
+    "signal_segments": [
+      [
+        0,
+        1000
+      ],
+      [
+        1800,
+        3500
+      ]
+    ],
+    "spike_radius": 3,
+    "spike_transform": "sqrt",
+    "spike_method": "fast",
+    "spike_n_sigmas": 3.0,
+    "spike_k": 4.0,
+    "spike_min_threshold": 1000.0,
+    "savgol_window_length": 31,
+    "savgol_polyorder": 3,
+    "savgol_deriv": 0,
+    "savgol_mode": "mirror",
+    "downsample_step": 5,
+    "downsample_offset": 0,
+    "rolling_window_size": 31,
+    "random_seed": 42,
+    "test_size": 0.15,
+    "representative_count": 128,
+    "clip_max_value": null,
+    "match_pytorch_flatten": true,
+    "excel_path": "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx",
+    "output_dir": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results",
+    "final_epochs": null,
+    "cv_folds_for_epoch_selection": 5,
+    "run_cv_for_epoch_selection": true,
+    "max_cv_epochs": 100,
+    "batch_size": 32,
+    "lr": 0.0001,
+    "weight_decay": 0.0001,
+    "label_smoothing": 0.3,
+    "patience": 25,
+    "use_lr_scheduler": true,
+    "scheduler_factor": 0.7,
+    "scheduler_patience": 5,
+    "scheduler_min_lr": 1e-06,
+    "random_shift_max_points": 5,
+    "random_shift_fill_mode": "wrap",
+    "device": null,
+    "num_workers": 0,
+    "tensorboard_log_dir": null,
+    "tensorboard_write_every_n": 10,
+    "final_use_train_loss_scheduler": false,
+    "parity_warning_threshold": 0.0001,
+    "tflite_variants": [
+      "float",
+      "dynamic_wi8_afp32",
+      "full_int8"
+    ]
+  }
+}

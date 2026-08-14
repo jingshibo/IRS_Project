@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
-from torch.utils.tensorboard import SummaryWriter
 
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Models.Model_Structure import (
     DualBranchFusionCNNClassifier,
@@ -519,6 +518,8 @@ class CNNTrainer:
 
         writer = None
         if self.config.tensorboard_log_dir is not None:
+            from torch.utils.tensorboard import SummaryWriter
+
             writer = SummaryWriter(log_dir=f"{self.config.tensorboard_log_dir}/fold_{fold_id}")
 
         for epoch in range(self.config.epochs):

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.data_pipeline import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.data_pipeline import (
     build_raw_multichannel_dataset,
     encode_labels,
     fit_transform_channel_scalers,
@@ -22,15 +22,19 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Li
     quantize_litert_model,
     quantize_litert_model_with_calibration,
 )
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.training_utils import (
-    choose_final_epochs,
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.calibration import (
+    build_stratified_representative_indices,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.metrics import (
     compute_logit_parity,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.training_utils import (
+    choose_final_epochs,
     evaluate_pytorch_model,
     set_random_seed,
     train_final_pytorch_model,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.validation_utils import (
-    build_stratified_representative_indices,
     validate_tflite_variant,
     variant_name_for_recipe,
 )
@@ -45,7 +49,7 @@ EXCEL_PATH = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
-# reruns PyTorch CV and uses the median best epoch for final training.
+# reruns PyTorch CV and uses the second-largest best epoch for final training.
 FINAL_EPOCHS = None
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100

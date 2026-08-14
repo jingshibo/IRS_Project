@@ -7,11 +7,11 @@ import numpy as np
 import tensorflow as tf
 
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Retrain_Keras_Method.Functions.config import FinalTrainingConfig
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.data_pipeline import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.data_pipeline import (
     encode_labels,
     fit_transform_channel_scalers,
 )
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.keras_model import (
     SharedBackboneConfig,
     build_shared_backbone_keras_model,
     torch_to_keras_input,
@@ -186,12 +186,16 @@ def fit_keras_model(
     )
 
 
-def choose_final_epochs(config: FinalTrainingConfig, x_trainval: np.ndarray, y_trainval_labels: np.ndarray) -> int:
+def choose_final_epochs(
+    config: FinalTrainingConfig,
+    x_trainval: np.ndarray,
+    y_trainval_labels: np.ndarray,
+) -> tuple[int, dict[str, object]]:
     """Choose fixed final-train epoch count from Keras CV, unless provided."""
     if config.final_epochs is not None:
         if config.final_epochs < 1:
             raise ValueError(f"final_epochs must be >= 1, got {config.final_epochs}")
-        return int(config.final_epochs)
+        return int(config.final_epochs), {"source": "user", "final_epochs": int(config.final_epochs)}
 
     if not config.run_cv_for_epoch_selection:
         raise ValueError("Set final_epochs or enable run_cv_for_epoch_selection.")
@@ -202,6 +206,7 @@ def choose_final_epochs(config: FinalTrainingConfig, x_trainval: np.ndarray, y_t
         random_seed=config.random_seed,
     )
     best_epochs = []
+    best_val_accs = []
     for fold_id, (train_idx, val_idx) in enumerate(cv_indices):
         print(f"Selecting epoch count with Keras CV fold {fold_id + 1}/{len(cv_indices)}")
         x_fold_train, x_fold_val, _ = fit_transform_channel_scalers(
@@ -249,14 +254,26 @@ def choose_final_epochs(config: FinalTrainingConfig, x_trainval: np.ndarray, y_t
         )
         val_acc = np.asarray(history.history["val_categorical_accuracy"], dtype=np.float32)
         best_epoch = int(np.argmax(val_acc) + 1)
+        best_val_acc = float(val_acc.max())
         best_epochs.append(best_epoch)
-        print(f"Fold {fold_id} best_epoch={best_epoch} best_val_acc={float(val_acc.max()):.4f}")
+        best_val_accs.append(best_val_acc)
+        print(f"Fold {fold_id} best_epoch={best_epoch} best_val_acc={best_val_acc:.4f}")
         tf.keras.backend.clear_session()
 
-    final_epochs = int(np.round(np.median(np.asarray(best_epochs, dtype=np.int64))))
+    sorted_best_epochs = sorted(best_epochs)
+    if len(sorted_best_epochs) < 2:
+        final_epochs = max(int(sorted_best_epochs[0]), 1)
+    else:
+        final_epochs = max(int(sorted_best_epochs[-2]), 1)
     print(f"Keras CV best epochs: {best_epochs}")
-    print(f"Using final_epochs={final_epochs} from median Keras CV best epoch.")
-    return max(final_epochs, 1)
+    print(f"Using final_epochs={final_epochs} from second-largest Keras CV best epoch.")
+    return final_epochs, {
+        "source": "keras_cv_second_largest_best_epoch",
+        "best_epochs": best_epochs,
+        "sorted_best_epochs": sorted_best_epochs,
+        "final_epochs": final_epochs,
+        "mean_best_val_acc": float(np.mean(np.asarray(best_val_accs, dtype=np.float32))),
+    }
 
 
 def evaluate_model(
@@ -264,9 +281,9 @@ def evaluate_model(
     x_test_keras: np.ndarray,
     y_test: np.ndarray,
     batch_size: int,
-) -> tuple[float, np.ndarray, np.ndarray]:
-    logits = model.predict(x_test_keras, batch_size=batch_size, verbose=0)
+) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
+    logits = model.predict(x_test_keras, batch_size=batch_size, verbose=0).astype(np.float32, copy=False)
     probs = tf.nn.softmax(logits, axis=1).numpy()
     pred_idx = np.argmax(probs, axis=1).astype(np.int64)
     accuracy = float(np.mean(pred_idx == y_test))
-    return accuracy, pred_idx, probs.astype(np.float32, copy=False)
+    return accuracy, pred_idx, probs.astype(np.float32, copy=False), logits

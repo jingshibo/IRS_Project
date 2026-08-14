@@ -3,20 +3,21 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Retrain_Keras_Method.Functions.config import FinalTrainingConfig
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import torch_to_keras_input
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.keras_model import torch_to_keras_input
 
 
 def save_final_artifacts(
     model: tf.keras.Model,
     config: FinalTrainingConfig,
     final_epochs: int,
+    epoch_selection: dict[str, object],
     label_to_idx: dict[str, int],
     idx_to_label: dict[int, str],
     x_train_norm: np.ndarray,
@@ -25,10 +26,14 @@ def save_final_artifacts(
     y_test_labels: Sequence[str],
     test_pred_idx: np.ndarray,
     test_prob: np.ndarray,
+    test_logits: np.ndarray,
+    representative_samples: np.ndarray,
+    representative_indices: np.ndarray,
     scalers: Sequence[StandardScaler],
     removed_zero_sample_indices: Sequence[int],
     test_accuracy: float,
     history: tf.keras.callbacks.History,
+    tflite_validation_results: Optional[dict[str, dict[str, object]]] = None,
 ) -> dict[str, Path]:
     """Save the final Keras model and every artifact needed by TFLite/ESP32."""
     output_dir = Path(config.output_dir)
@@ -37,9 +42,11 @@ def save_final_artifacts(
     keras_model_path = output_dir / "shared_backbone_final.keras"
     model.save(keras_model_path)
 
-    representative = x_train_norm[: min(config.representative_count, len(x_train_norm))]
     representative_path = output_dir / "representative_final.npy"
-    np.save(representative_path, representative.astype(np.float32, copy=False))
+    np.save(representative_path, representative_samples.astype(np.float32, copy=False))
+
+    representative_indices_path = output_dir / "representative_indices_final.npy"
+    np.save(representative_indices_path, np.asarray(representative_indices, dtype=np.int64))
 
     mean = np.stack([np.asarray(scaler.mean_, dtype=np.float32) for scaler in scalers], axis=0)
     scale = np.stack([np.asarray(scaler.scale_, dtype=np.float32) for scaler in scalers], axis=0)
@@ -47,20 +54,54 @@ def save_final_artifacts(
     np.savez(scalers_path, mean=mean, scale=scale)
 
     predictions_path = output_dir / "test_predictions_final.npz"
-    np.savez(
-        predictions_path,
-        y_true_idx=y_test,
-        y_true_label=np.asarray(y_test_labels),
-        y_pred_idx=test_pred_idx,
-        y_pred_label=np.asarray([idx_to_label[int(idx)] for idx in test_pred_idx]),
-        y_prob=test_prob.astype(np.float32, copy=False),
-        x_test_norm_pytorch_layout=x_test_norm.astype(np.float32, copy=False),
-        x_test_norm_keras_layout=torch_to_keras_input(x_test_norm).astype(np.float32, copy=False),
-    )
+    prediction_payload = {
+        "y_true_idx": y_test,
+        "y_true_label": np.asarray(y_test_labels),
+        "keras_pred_idx": test_pred_idx,
+        "keras_pred_label": np.asarray([idx_to_label[int(idx)] for idx in test_pred_idx]),
+        "keras_prob": test_prob.astype(np.float32, copy=False),
+        "keras_logits": test_logits.astype(np.float32, copy=False),
+        "x_test_norm_pytorch_layout": x_test_norm.astype(np.float32, copy=False),
+        "x_test_norm_keras_layout": torch_to_keras_input(x_test_norm).astype(np.float32, copy=False),
+    }
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            if result.get("logits") is not None:
+                prediction_payload[f"{variant_name}_logits"] = np.asarray(result["logits"], dtype=np.float32)
+            if result.get("prob") is not None:
+                prediction_payload[f"{variant_name}_prob"] = np.asarray(result["prob"], dtype=np.float32)
+            if result.get("pred_idx") is not None:
+                pred_idx = np.asarray(result["pred_idx"], dtype=np.int64)
+                prediction_payload[f"{variant_name}_pred_idx"] = pred_idx
+                prediction_payload[f"{variant_name}_pred_label"] = np.asarray(
+                    [idx_to_label[int(idx)] for idx in pred_idx]
+                )
+    np.savez(predictions_path, **prediction_payload)
+
+    tflite_variant_summary = {}
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            tflite_variant_summary[variant_name] = {
+                "path": str(result.get("path")) if result.get("path") is not None else None,
+                "accuracy": result.get("accuracy"),
+                "accuracy_diff_vs_keras": result.get("accuracy_diff_vs_keras"),
+                "logit_parity": result.get("parity"),
+                "logit_parity_vs_keras": result.get("parity_vs_keras"),
+                "interpreter_metadata": result.get("interpreter_metadata"),
+            }
+    comparison_summary = {
+        "retrained_keras": {
+            "accuracy": test_accuracy,
+            "accuracy_diff_vs_keras": 0.0,
+            "path": str(keras_model_path),
+        },
+        **tflite_variant_summary,
+    }
 
     metadata = {
         "model_name": config.model_name,
-        "primary_model_format": "keras",
+        "primary_training_framework": "keras",
+        "deployment_model_format": "keras_and_tflite" if tflite_variant_summary else "keras",
         "keras_model_path": str(keras_model_path),
         "class_order": list(config.class_order),
         "label_to_idx": label_to_idx,
@@ -82,7 +123,8 @@ def save_final_artifacts(
         "rolling_window_size": config.rolling_window_size,
         "random_seed": config.random_seed,
         "test_size": config.test_size,
-        "final_epochs": final_epochs,
+        "final_epochs": int(final_epochs),
+        "epoch_selection": epoch_selection,
         "batch_size": config.batch_size,
         "lr": config.lr,
         "weight_decay": config.weight_decay,
@@ -99,11 +141,17 @@ def save_final_artifacts(
         "optimizer_beta_2": config.optimizer_beta_2,
         "optimizer_epsilon": config.optimizer_epsilon,
         "optimizer_amsgrad": config.optimizer_amsgrad,
-        "test_accuracy": test_accuracy,
+        "keras_test_accuracy": test_accuracy,
+        "tflite_variants_requested": list(config.tflite_variants),
+        "tflite_variants": tflite_variant_summary,
+        "comparison_summary": comparison_summary,
         "train_history": {key: [float(v) for v in values] for key, values in history.history.items()},
         "removed_zero_sample_indices": list(removed_zero_sample_indices),
+        "representative_indices_path": str(representative_indices_path),
+        "representative_count": int(len(representative_samples)),
         "pytorch_input_shape": list(x_train_norm.shape[1:]),
         "keras_input_shape": [x_train_norm.shape[2], x_train_norm.shape[1]],
+        "tflite_input_shape": [1, x_train_norm.shape[2], x_train_norm.shape[1]],
         "scaler_mean_shape": list(mean.shape),
         "scaler_scale_shape": list(scale.shape),
         "config": asdict(config),
@@ -111,10 +159,16 @@ def save_final_artifacts(
     metadata_path = output_dir / "deployment_metadata_final.json"
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    return {
+    artifacts = {
         "keras_model": keras_model_path,
         "representative": representative_path,
+        "representative_indices": representative_indices_path,
         "scalers": scalers_path,
         "predictions": predictions_path,
         "metadata": metadata_path,
     }
+    if tflite_validation_results is not None:
+        for variant_name, result in tflite_validation_results.items():
+            if result.get("path") is not None:
+                artifacts[f"{variant_name}_model"] = Path(result["path"])
+    return artifacts

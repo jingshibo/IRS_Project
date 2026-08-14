@@ -3,34 +3,27 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import tensorflow as tf
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.data_pipeline import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.data_pipeline import (
     build_raw_multichannel_dataset,
     encode_labels,
     fit_transform_channel_scalers,
-)
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.export_tflite import (
-    convert_to_tflite,
-)
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import (
-    SharedBackboneConfig,
-    build_shared_backbone_keras_model,
-    torch_to_keras_input,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.config import (
     DEFAULT_OUTPUT_DIR,
     PytorchToKerasConfig,
 )
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.final_artifacts import (
-    save_final_artifacts,
-)
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.transfer_pytorch_weights import (
-    transfer_shared_backbone_weights,
-)
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.training_utils import (
-    choose_final_epochs,
+    predict_keras_logits_prob,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.calibration import (
+    build_stratified_representative_indices,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.metrics import (
     compute_logit_parity,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.training_utils import (
+    choose_final_epochs,
     evaluate_pytorch_model,
     set_random_seed,
     train_final_pytorch_model,
@@ -47,7 +40,7 @@ EXCEL_PATH = "/home/shibojing/data/Practice/Stage3a_all_mixed.xlsx"
 OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
-# reruns PyTorch CV and uses the median best epoch for final training.
+# reruns PyTorch CV and uses the second-largest best epoch for final training.
 FINAL_EPOCHS = None
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100
@@ -71,12 +64,16 @@ NUM_WORKERS = 0
 # Keep False by default because final training has no validation split.
 FINAL_USE_TRAIN_LOSS_SCHEDULER = False
 
-REPRESENTATIVE_COUNT = 128
-PARITY_SAMPLE_COUNT = 128
-PARITY_WARNING_THRESHOLD = 1e-4
+REPRESENTATIVE_COUNT = 128  # The number of normalized training samples saved for optional TFLite int8 calibration.
+PARITY_WARNING_THRESHOLD = 1e-4  # Warning cutoff for PyTorch-vs-Keras output mismatch.
 
-EXPORT_TFLITE = False
-FLOAT_TFLITE = False
+TFLITE_VARIANTS = (
+    "float",
+    "dynamic_wi8_afp32",
+    "full_int8",
+)  # Save float, dynamic-range, and calibrated full-int8 models for comparison.
+SKIP_TFLITE_EXPORT = False  # Whether to skip exporting .tflite files after PyTorch-to-Keras weight transfer.
+SKIP_TFLITE_VALIDATION = False  # Whether to skip desktop TFLite validation.
 
 FINAL_CONFIG = PytorchToKerasConfig(
     excel_path=EXCEL_PATH,
@@ -100,27 +97,13 @@ FINAL_CONFIG = PytorchToKerasConfig(
     final_use_train_loss_scheduler=FINAL_USE_TRAIN_LOSS_SCHEDULER,
     device=DEVICE,
     num_workers=NUM_WORKERS,
-    parity_sample_count=PARITY_SAMPLE_COUNT,
     parity_warning_threshold=PARITY_WARNING_THRESHOLD,
+    tflite_variants=TFLITE_VARIANTS,
 )
 
 
-def _keras_logits_and_prob(
-    model: tf.keras.Model,
-    x_pytorch_layout: np.ndarray,
-    batch_size: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    keras_logits = model.predict(
-        torch_to_keras_input(x_pytorch_layout),
-        batch_size=batch_size,
-        verbose=0,
-    ).astype(np.float32, copy=False)
-    keras_prob = tf.nn.softmax(keras_logits, axis=1).numpy().astype(np.float32, copy=False)
-    return keras_logits, keras_prob
-
-
 # =========================
-# Run Pipeline
+# Validate configuration
 # =========================
 config = FINAL_CONFIG
 
@@ -129,9 +112,12 @@ if config.model_name != "shared_backbone_2ch":
 if not config.match_pytorch_flatten:
     raise ValueError("PyTorch-to-Keras exact weight transfer requires match_pytorch_flatten=True.")
 
-set_random_seed(config.random_seed)
-print(f"TensorFlow version: {tf.__version__}")
 
+
+# =========================
+# Build holdout data split
+# =========================
+set_random_seed(config.random_seed)
 x_all, y_all, removed_zero_sample_indices = build_raw_multichannel_dataset(config)
 x_trainval, x_test, y_trainval_labels, y_test_labels = Preprocessing.split_holdout(
     x_all,
@@ -140,7 +126,13 @@ x_trainval, x_test, y_trainval_labels, y_test_labels = Preprocessing.split_holdo
     random_seed=config.random_seed,
 )
 
+
+# =========================
+# Select final epochs and preprocess data
+# =========================
+# Use the fixed FINAL_EPOCHS value, or rerun PyTorch CV to choose the final epoch count.
 final_epochs, epoch_selection = choose_final_epochs(config, x_trainval, y_trainval_labels)
+# Fit per-channel StandardScaler objects on trainval only, then reuse them for test and deployment.
 x_train_norm, x_test_norm, scalers = fit_transform_channel_scalers(
     x_trainval,
     x_test,
@@ -148,7 +140,17 @@ x_train_norm, x_test_norm, scalers = fit_transform_channel_scalers(
 )
 y_train, label_to_idx, idx_to_label = encode_labels(y_trainval_labels, config.class_order)
 y_test = np.asarray([label_to_idx[label] for label in y_test_labels], dtype=np.int64)
+representative_indices = build_stratified_representative_indices(
+    y_train,
+    count=config.representative_count,
+    seed=config.random_seed,
+)
+representative_samples = x_train_norm[representative_indices]
 
+
+# =========================
+# Train final PyTorch model
+# =========================
 pytorch_model, train_history, device = train_final_pytorch_model(
     x_train_norm=x_train_norm,
     y_train=y_train,
@@ -164,6 +166,32 @@ torch_test_accuracy, torch_pred_idx, torch_prob, torch_logits = evaluate_pytorch
 )
 print(f"Final PyTorch holdout test accuracy: {torch_test_accuracy:.4f}")
 
+
+# =========================
+# Rebuild Keras model and transfer PyTorch weights
+# =========================
+import tensorflow as tf
+
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.export_tflite import (
+    build_tflite_validation_placeholders,
+    export_keras_tflite_variants,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.keras_model import (
+    SharedBackboneConfig,
+    build_shared_backbone_keras_model,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.final_artifacts import (
+    save_final_artifacts,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.tflite_utils import (
+    validate_keras_tflite_variant,
+)
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.transfer_pytorch_weights import (
+    transfer_shared_backbone_weights,
+)
+
+print(f"TensorFlow version: {tf.__version__}")
+
 keras_config = SharedBackboneConfig(
     input_length=x_train_norm.shape[2],
     in_channels=x_train_norm.shape[1],
@@ -176,13 +204,16 @@ keras_model = build_shared_backbone_keras_model(
 )
 transfer_shared_backbone_weights(keras_model, pytorch_model.state_dict())
 
-keras_logits, keras_prob = _keras_logits_and_prob(keras_model, x_test_norm, batch_size=config.batch_size)
+
+# =========================
+# Validate PyTorch-to-Keras parity
+# =========================
+keras_logits, keras_prob = predict_keras_logits_prob(keras_model, x_test_norm, batch_size=config.batch_size)
 keras_pred_idx = np.argmax(keras_prob, axis=1).astype(np.int64)
 keras_test_accuracy = float(np.mean(keras_pred_idx == y_test))
-parity_count = min(config.parity_sample_count, len(x_test_norm))
 parity = compute_logit_parity(
-    torch_logits[:parity_count],
-    keras_logits[:parity_count],
+    torch_logits,
+    keras_logits,
 )
 print(f"Transferred Keras holdout test accuracy: {keras_test_accuracy:.4f}")
 print(f"PyTorch-to-Keras max abs logit diff: {parity['max_abs_diff']:.8g}")
@@ -192,6 +223,72 @@ if parity["max_abs_diff"] > config.parity_warning_threshold:
         f"{config.parity_warning_threshold:.1e}. Check architecture and weight-transfer parity."
     )
 
+
+# =========================
+# Export and validate TFLite variants from transferred Keras model
+# =========================
+tflite_variant_paths = {}
+tflite_validation_results = {}
+if not SKIP_TFLITE_EXPORT:
+    tflite_variant_paths = export_keras_tflite_variants(
+        keras_model=keras_model,
+        output_dir=Path(config.output_dir),
+        variant_names=config.tflite_variants,
+        representative_samples=representative_samples,
+    )
+
+    if not SKIP_TFLITE_VALIDATION:
+        for variant_name, variant_path in tflite_variant_paths.items():
+            tflite_validation_results[variant_name] = validate_keras_tflite_variant(
+                variant_name=variant_name,
+                model_path=variant_path,
+                x_test_norm=x_test_norm,
+                y_test=y_test,
+                keras_logits=keras_logits,
+                keras_accuracy=keras_test_accuracy,
+                torch_logits=torch_logits,
+                torch_accuracy=torch_test_accuracy,
+                config=config,
+            )
+
+        print("TFLite variant comparison summary:")
+        print(f"  PyTorch/original accuracy: {torch_test_accuracy:.4f}")
+        print(
+            f"  Transferred Keras accuracy: {keras_test_accuracy:.4f} "
+            f"accuracy_diff={keras_test_accuracy - torch_test_accuracy:+.4f} "
+            f"max_abs_logit_diff={parity['max_abs_diff']:.8g}"
+        )
+        for variant_name, result in tflite_validation_results.items():
+            metadata = result["interpreter_metadata"]
+            print(
+                f"  {variant_name}: accuracy={result['accuracy']:.4f} "
+                f"accuracy_diff={result['accuracy_diff_vs_pytorch']:+.4f} "
+                f"max_abs_logit_diff={result['parity']['max_abs_diff']:.8g} "
+                f"input_dtype={metadata['input_dtype']} output_dtype={metadata['output_dtype']}"
+            )
+        print(
+            "  sample[0] PyTorch logits: "
+            f"{np.array2string(torch_logits[0], precision=6, suppress_small=False)}"
+        )
+        print(
+            "  sample[0] transferred Keras logits: "
+            f"{np.array2string(keras_logits[0], precision=6, suppress_small=False)}"
+        )
+        for variant_name, result in tflite_validation_results.items():
+            print(
+                f"  sample[0] {variant_name} logits: "
+                f"{np.array2string(result['logits'][0], precision=6, suppress_small=False)}"
+            )
+    else:
+        tflite_validation_results = build_tflite_validation_placeholders(
+            tflite_variant_paths,
+            include_pytorch_baseline=True,
+        )
+
+
+# =========================
+# Save final PyTorch, Keras, and TFLite artifacts
+# =========================
 artifacts = save_final_artifacts(
     pytorch_model=pytorch_model,
     keras_model=keras_model,
@@ -210,25 +307,15 @@ artifacts = save_final_artifacts(
     keras_pred_idx=keras_pred_idx,
     keras_prob=keras_prob,
     keras_logits=keras_logits,
+    representative_samples=representative_samples,
+    representative_indices=representative_indices,
     scalers=scalers,
     removed_zero_sample_indices=removed_zero_sample_indices,
     torch_test_accuracy=torch_test_accuracy,
     keras_test_accuracy=keras_test_accuracy,
     parity=parity,
     train_history=train_history,
+    tflite_validation_results=tflite_validation_results,
 )
 
-if EXPORT_TFLITE:
-    tflite_name = "shared_backbone_float.tflite" if FLOAT_TFLITE else "shared_backbone_int8.tflite"
-    tflite_path = Path(config.output_dir) / tflite_name
-    convert_to_tflite(
-        keras_model_path=artifacts["keras_model"],
-        output_path=tflite_path,
-        representative_npy=None if FLOAT_TFLITE else artifacts["representative"],
-        int8=not FLOAT_TFLITE,
-    )
-    artifacts["tflite_model"] = tflite_path
-
-print("Saved final PyTorch-to-Keras deployment artifacts:")
-for name, path in artifacts.items():
-    print(f"  {name}: {path}")
+print("Saved final PyTorch-to-Keras deployment artifacts.")

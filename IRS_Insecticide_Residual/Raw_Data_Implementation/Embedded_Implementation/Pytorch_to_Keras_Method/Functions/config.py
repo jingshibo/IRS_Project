@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.config import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.config import (
     EmbeddedPipelineConfig,
 )
 
-DEFAULT_OUTPUT_DIR = (
-    "IRS_Insecticide_Residual/Raw_Data_Implementation/"
-    "Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model"
-)
+METHOD_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = str(METHOD_DIR / "Results")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,5 +38,5 @@ class PytorchToKerasConfig(EmbeddedPipelineConfig):
     tensorboard_log_dir: Optional[str] = None
     tensorboard_write_every_n: int = 10
     final_use_train_loss_scheduler: bool = False
-    parity_sample_count: int = 128
     parity_warning_threshold: float = 1e-4
+    tflite_variants: tuple[str, ...] = ()

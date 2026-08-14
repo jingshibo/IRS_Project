@@ -36,11 +36,14 @@ Pytorch_to_Keras_Method/
 Shared files used by all embedded-generation methods:
 
 ```text
-Embedded_Implementation/Functions/
+Embedded_Implementation/Shared_Functions/
   config.py
   data_pipeline.py
   keras_model.py
   export_tflite.py
+  tflite_utils.py
+  calibration.py
+  metrics.py
   deployment_artifacts.py
 ```
 
@@ -63,9 +66,10 @@ RUN_CV_FOR_EPOCH_SELECTION = True
 FINAL_EPOCHS = 50
 RUN_CV_FOR_EPOCH_SELECTION = False
 
-# Export TFLite directly after Keras transfer.
-EXPORT_TFLITE = True
-FLOAT_TFLITE = False
+# Export TFLite variants directly after Keras transfer.
+TFLITE_VARIANTS = ("float", "dynamic_wi8_afp32", "full_int8")
+SKIP_TFLITE_EXPORT = False
+SKIP_TFLITE_VALIDATION = False
 ```
 
 Run this file directly in PyCharm, or run it from the project root:
@@ -77,19 +81,24 @@ python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementati
 Default output folder:
 
 ```text
-IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model
+Pytorch_to_Keras_Method/Results
 ```
+
+The default path is computed from the location of `Functions/config.py`, so it
+does not depend on the current working directory used by PyCharm.
 
 Important outputs:
 
 ```text
 shared_backbone_final.pth
 shared_backbone_final.keras
+shared_backbone_float.tflite                # only when SKIP_TFLITE_EXPORT = False
+shared_backbone_dynamic_wi8_afp32.tflite    # only when SKIP_TFLITE_EXPORT = False
+shared_backbone_full_int8.tflite            # only when SKIP_TFLITE_EXPORT = False
 representative_final.npy
 scalers_final.npz
 deployment_metadata_final.json
 test_predictions_final.npz
-shared_backbone_int8.tflite       # only when EXPORT_TFLITE = True
 ```
 
 The final PyTorch training step uses all trainval data. The holdout test split
@@ -111,7 +120,7 @@ If you already have a trained `.pth` checkpoint and only want to copy weights to
 Keras, use:
 
 ```bash
-python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Functions.transfer_pytorch_weights \
+python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Pytorch_to_Keras_Method.Shared_Functions.transfer_pytorch_weights \
   --pytorch-weights path/to/shared_backbone_final.pth \
   --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/shared_backbone.keras \
   --metadata-output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/shared_backbone_metadata.json \
@@ -125,17 +134,26 @@ python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementati
 The TFLite exporter is shared:
 
 ```bash
-python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.export_tflite \
-  --keras-model IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model/shared_backbone_final.keras \
-  --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model/shared_backbone_int8.tflite \
-  --representative-npy IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model/representative_final.npy
+python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.export_tflite \
+  --keras-model IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras \
+  --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_full_int8.tflite \
+  --representative-npy IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/representative_final.npy
 ```
 
 For a debug float model:
 
 ```bash
-python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.export_tflite \
-  --keras-model IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model/shared_backbone_final.keras \
-  --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/artifacts/final_model/shared_backbone_float.tflite \
+python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.export_tflite \
+  --keras-model IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras \
+  --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_float.tflite \
   --float
+```
+
+For a dynamic-range model with quantized weights and float input/output:
+
+```bash
+python -m IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.export_tflite \
+  --keras-model IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras \
+  --output IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite \
+  --dynamic-range
 ```

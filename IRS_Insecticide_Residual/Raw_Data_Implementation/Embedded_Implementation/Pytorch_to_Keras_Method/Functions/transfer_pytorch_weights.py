@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 import torch
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.keras_model import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.keras_model import (
     SharedBackboneConfig,
     build_shared_backbone_keras_model,
     torch_to_keras_input,

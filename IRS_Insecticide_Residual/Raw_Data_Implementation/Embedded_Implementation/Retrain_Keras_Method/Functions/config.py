@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
-from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Functions.config import (
+from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.config import (
     EmbeddedPipelineConfig,
 )
 
-DEFAULT_OUTPUT_DIR = (
-    "IRS_Insecticide_Residual/Raw_Data_Implementation/"
-    "Embedded_Implementation/Retrain_Keras_Method/artifacts/final_model"
-)
+METHOD_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = str(METHOD_DIR / "Results")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,3 +37,5 @@ class FinalTrainingConfig(EmbeddedPipelineConfig):
     optimizer_beta_2: float = 0.999
     optimizer_epsilon: float = 1e-8
     optimizer_amsgrad: bool = False
+    parity_warning_threshold: float = 1e-4
+    tflite_variants: tuple[str, ...] = ()
