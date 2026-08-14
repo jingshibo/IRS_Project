@@ -43,7 +43,7 @@ def export_pytorch_model_to_litert(
     output_path: Path,
     sample_input: torch.Tensor, # LiteRT needs sample_input to build a fixed computation graph.
 ) -> tuple[Path, np.ndarray]:
-    """Convert a PyTorch model to `.tflite` with LiteRT Torch and return sample logits."""
+    """Convert a PyTorch model to float `.tflite` with LiteRT Torch and return sample logits."""
     litert_torch = _import_litert_torch()
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

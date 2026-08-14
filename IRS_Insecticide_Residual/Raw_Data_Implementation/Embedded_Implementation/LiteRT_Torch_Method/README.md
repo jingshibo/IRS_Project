@@ -111,6 +111,7 @@ shared_backbone_litert_float.tflite
 shared_backbone_litert_dynamic_wi8_afp32.tflite
 shared_backbone_litert_static_wi8_ai8.tflite
 representative_final.npy
+representative_indices_final.npy
 scalers_final.npz
 deployment_metadata_final.json
 test_predictions_final.npz
@@ -161,7 +162,7 @@ holdout accuracy from PyTorch
 holdout accuracy from float TFLite
 holdout accuracy from dynamic weight-int8 TFLite
 holdout accuracy from calibrated full-int8 TFLite
-logit differences for each TFLite variant vs PyTorch
+logit differences over the full holdout test set for each TFLite variant vs PyTorch
 ```
 
 The full arrays are saved in `test_predictions_final.npz`. The saved variant
@@ -169,6 +170,7 @@ keys are:
 
 ```text
 torch_logits
+float_edge_sample_logits
 float_logits
 half_quant_dynamic_wi8_afp32_logits
 full_quant_static_wi8_ai8_logits
