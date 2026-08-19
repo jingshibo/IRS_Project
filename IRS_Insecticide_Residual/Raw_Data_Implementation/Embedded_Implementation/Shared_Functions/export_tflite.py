@@ -9,58 +9,49 @@ import tensorflow as tf
 
 
 def representative_dataset_from_npy(path: Path) -> Iterable[list[np.ndarray]]:
-    """Yield representative samples saved as [N, C, L] or [N, L, C]."""
-    samples = np.load(path).astype(np.float32)
+    """Defines a generator function. Yield representative samples in the format TFLite expects: [N, C, L] or [N, L, C]."""
+    samples = np.load(path).astype(np.float32) # Load representative samples from a .npy file.
     if samples.ndim != 3:
         raise ValueError(f"Representative data must be 3D, got shape {samples.shape}")
     if samples.shape[1] in {1, 2, 3, 4}:
-        samples = samples.transpose(0, 2, 1)
+        samples = samples.transpose(0, 2, 1) # [N, C, L] - PyTorch layout, transpose to [N, L, C] for TFLite.
     for sample in samples:
-        yield [sample[np.newaxis, ...].astype(np.float32)]
-
-
-def convert_to_tflite(
-    keras_model_path: Path,
-    output_path: Path,
-    representative_npy: Path | None = None,
-    int8: bool = True,
-    dynamic_range: bool = False,
-) -> None:
-    convert_keras_model_to_tflite(
-        keras_model=tf.keras.models.load_model(keras_model_path),
-        output_path=output_path,
-        representative_npy=representative_npy,
-        int8=int8,
-        dynamic_range=dynamic_range,
-    )
+        # Yield a single sample with batch dimension added, as TFLite expects a list of input arrays.
+        yield [sample[np.newaxis, ...].astype(np.float32)] # np.newaxis changes a single sample [540, 3] to [1, 540, 3]
 
 
 def convert_keras_model_to_tflite(
     keras_model: tf.keras.Model,
     output_path: Path,
-    representative_npy: Path | None = None,
-    int8: bool = True,
-    dynamic_range: bool = False,
+    representative_npy: Path | None = None,  # Calibration samples for full-int8 quantization.
+    int8: bool = False,  # Whether to export a fully quantized int8 model.
+    dynamic_range: bool = False,  # Whether to export dynamic-range quantized weights with float I/O.
 ) -> None:
+    # Full-int8 and dynamic-range quantization are different export modes, so they cannot both be enabled.
     if int8 and dynamic_range:
         raise ValueError("Use either int8 full quantization or dynamic-range quantization, not both.")
 
+    # Create a TensorFlow Lite converter from the in-memory Keras model.
     converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
 
-    if int8:
+    if int8: # Configure full-int8 quantization when requested.
+        # Full-int8 quantization needs representative data to calibrate activation ranges.
         if representative_npy is None:
+            # Without representative data, TensorFlow cannot calibrate the int8 activation scales.
             raise ValueError("--representative-npy is required for int8 conversion")
-        converter.optimizations = [tf.lite.Optimize.DEFAULT]
-        converter.representative_dataset = lambda: representative_dataset_from_npy(representative_npy)
-        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-        converter.inference_input_type = tf.int8
-        converter.inference_output_type = tf.int8
-    elif dynamic_range:
-        converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-    model_bytes = converter.convert()
+        converter.optimizations = [tf.lite.Optimize.DEFAULT] # Enable TFLite's default optimization pipeline, including quantization.
+        converter.representative_dataset = lambda: representative_dataset_from_npy(representative_npy) # # Provide calibration samples
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8] # Restrict to built-in int8-compatible TFLite operations.
+        converter.inference_input_type = tf.int8 # Make the model input tensor int8 for embedded deployment.
+        converter.inference_output_type = tf.int8 # Make the model output tensor int8 for embedded deployment.
+
+    elif dynamic_range: # Configure dynamic-range quantization when requested.
+        converter.optimizations = [tf.lite.Optimize.DEFAULT] # Dynamic-range quantization not requiring calibration samples.
+
+    model_bytes = converter.convert() # Run the TFLite conversion and receive the serialized model bytes.
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(model_bytes)
+    output_path.write_bytes(model_bytes) # Write the serialized TFLite model to disk.
     print(f"Saved TFLite model: {output_path}")
     print(f"Size: {len(model_bytes) / 1024:.1f} KiB")
 
@@ -81,16 +72,12 @@ def export_keras_tflite_variants(
             convert_keras_model_to_tflite(
                 keras_model=keras_model,
                 output_path=variant_tflite_path,
-                representative_npy=None,
-                int8=False,
             )
         elif variant_name == "dynamic_wi8_afp32":
             variant_tflite_path = output_dir / "shared_backbone_dynamic_wi8_afp32.tflite"
             convert_keras_model_to_tflite(
                 keras_model=keras_model,
                 output_path=variant_tflite_path,
-                representative_npy=None,
-                int8=False,
                 dynamic_range=True,
             )
         elif variant_name == "full_int8":
@@ -101,8 +88,8 @@ def export_keras_tflite_variants(
             convert_keras_model_to_tflite(
                 keras_model=keras_model,
                 output_path=variant_tflite_path,
-                representative_npy=representative_path_for_export,
                 int8=True,
+                representative_npy=representative_path_for_export,
             )
         else:
             raise ValueError(f"Unsupported TFLite variant: {variant_name}")
@@ -151,8 +138,8 @@ def main() -> None:
     if args.float and args.dynamic_range:
         parser.error("--float and --dynamic-range are mutually exclusive")
 
-    convert_to_tflite(
-        keras_model_path=args.keras_model,
+    convert_keras_model_to_tflite(
+        keras_model=tf.keras.models.load_model(args.keras_model),
         output_path=args.output,
         representative_npy=args.representative_npy,
         int8=not args.float and not args.dynamic_range,

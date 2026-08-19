@@ -41,7 +41,7 @@ OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
 # reruns PyTorch CV and uses the second-largest best epoch for final training.
-FINAL_EPOCHS = None
+FINAL_EPOCHS = 60
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100
 
@@ -106,12 +106,10 @@ FINAL_CONFIG = PytorchToKerasConfig(
 # Validate configuration
 # =========================
 config = FINAL_CONFIG
-
 if config.model_name != "shared_backbone_2ch":
     raise ValueError("This PyTorch-to-Keras script currently supports only shared_backbone_2ch.")
 if not config.match_pytorch_flatten:
     raise ValueError("PyTorch-to-Keras exact weight transfer requires match_pytorch_flatten=True.")
-
 
 
 # =========================
@@ -192,16 +190,23 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Py
 
 print(f"TensorFlow version: {tf.__version__}")
 
+
+# Config the Keras model with the correct input shape: [batch, length, channels].
 keras_config = SharedBackboneConfig(
     input_length=x_train_norm.shape[2],
     in_channels=x_train_norm.shape[1],
     num_classes=len(label_to_idx),
 )
+# Important: there are two different orders we need to match: the input/output tensor order and the model weight order.
+# Input/output tensor order: The tensor layout in Keras is [batch, length, channels], while in PyTorch is [batch, channels, length].
+# If we need to flatten the tensor in the model, we should convert Keras tensor to Pytorch style so the flattened feature vector is consistent.
 keras_model = build_shared_backbone_keras_model(
     keras_config,
     include_softmax=False,
     match_pytorch_flatten=True,
 )
+# Model weight order: Keras Conv1D/dense weights and Pytorch Conv1d/dense weights have different layouts.
+# When transferring PyTorch's weights to Keras models, We need to convert the Pytorch weight layout to match Keras model .
 transfer_shared_backbone_weights(keras_model, pytorch_model.state_dict())
 
 

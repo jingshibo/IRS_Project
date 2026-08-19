@@ -32,7 +32,8 @@ def _load_state_dict(path: Path) -> Mapping[str, Any]:
 def _set_conv1d_weights(keras_model: tf.keras.Model, state: Mapping[str, Any], block_idx: int) -> None:
     conv = keras_model.get_layer(f"features_{block_idx}_conv")
     prefix = f"features.features.{block_idx}.0"
-    weight = state[f"{prefix}.weight"].detach().cpu().numpy().transpose(2, 1, 0)
+    # PyTorch Conv1d weight: [out_channels, in_channels, kernel_size], Keras Conv1D weight:   [kernel_size, in_channels, out_channels]
+    weight = state[f"{prefix}.weight"].detach().cpu().numpy().transpose(2, 1, 0) # transpose converts PyTorch weight format into Keras.
     bias = state[f"{prefix}.bias"].detach().cpu().numpy()
     conv.set_weights([weight, bias])
 
@@ -58,7 +59,8 @@ def _set_dense_weights(
     torch_prefix: str,
 ) -> None:
     dense = keras_model.get_layer(keras_layer_name)
-    weight = state[f"{torch_prefix}.weight"].detach().cpu().numpy().T
+    # PyTorch Dense weight: [out_features, in_features], Keras Dense weight: [in_features, out_features]
+    weight = state[f"{torch_prefix}.weight"].detach().cpu().numpy().T # .T converts the PyTorch weight matrix into Keras.
     bias = state[f"{torch_prefix}.bias"].detach().cpu().numpy()
     dense.set_weights([weight, bias])
 
@@ -68,6 +70,7 @@ def transfer_shared_backbone_weights(
     pytorch_state_dict: Mapping[str, Any],
 ) -> tf.keras.Model:
     """Copy OneDCNNClassifier weights into the equivalent Keras model."""
+    # copies the four CNN feature blocks
     for block_idx in range(4):
         _set_conv1d_weights(keras_model, pytorch_state_dict, block_idx)
         _set_batch_norm_weights(
@@ -76,7 +79,7 @@ def transfer_shared_backbone_weights(
             keras_layer_name=f"features_{block_idx}_bn",
             torch_prefix=f"features.features.{block_idx}.1",
         )
-
+    # copies the classifier Dense layers
     _set_dense_weights(keras_model, pytorch_state_dict, "classifier_dense_0", "classifier.1")
     _set_batch_norm_weights(keras_model, pytorch_state_dict, "classifier_bn_0", "classifier.2")
     _set_dense_weights(keras_model, pytorch_state_dict, "classifier_dense_1", "classifier.5")

@@ -50,7 +50,7 @@ OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
 # reruns PyTorch CV and uses the second-largest best epoch for final training.
-FINAL_EPOCHS = None
+FINAL_EPOCHS = 60
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100
 
@@ -109,14 +109,19 @@ FINAL_CONFIG = LiteRTTorchConfig(  # including both properties from config.Embed
     calibration_threads=CALIBRATION_THREADS,
 )
 
+
 # =========================
-# Final Pytorch model training
+# Validate configuration
 # =========================
 config = FINAL_CONFIG
 
 if config.model_name != "shared_backbone_2ch":
     raise ValueError("This LiteRT Torch script currently supports only shared_backbone_2ch.")
 
+
+# =========================
+# Build holdout data split
+# =========================
 set_random_seed(config.random_seed)
 x_all, y_all, removed_zero_sample_indices = build_raw_multichannel_dataset(config)
 x_trainval, x_test, y_trainval_labels, y_test_labels = Preprocessing.split_holdout(
@@ -126,6 +131,10 @@ x_trainval, x_test, y_trainval_labels, y_test_labels = Preprocessing.split_holdo
     random_seed=config.random_seed,
 )
 
+
+# =========================
+# Select final epochs and preprocess data
+# =========================
 # Use the fixed FINAL_EPOCHS value, or rerun PyTorch CV to choose the final epoch count.
 final_epochs, epoch_selection = choose_final_epochs(config, x_trainval, y_trainval_labels)
 # Fit per-channel StandardScaler objects on trainval only, then reuse them for test and deployment.
@@ -143,6 +152,10 @@ representative_indices = build_stratified_representative_indices(
 )
 representative_samples = x_train_norm[representative_indices]
 
+
+# =========================
+# Train final PyTorch model
+# =========================
 pytorch_model, train_history, device = train_final_pytorch_model(
     x_train_norm=x_train_norm,
     y_train=y_train,
@@ -157,6 +170,7 @@ torch_test_accuracy, torch_pred_idx, torch_prob, torch_logits = evaluate_pytorch
     batch_size=config.batch_size,
 )
 print(f"Final PyTorch holdout test accuracy: {torch_test_accuracy:.4f}")
+
 
 # =========================
 # Convert Pytorch model to tflite file

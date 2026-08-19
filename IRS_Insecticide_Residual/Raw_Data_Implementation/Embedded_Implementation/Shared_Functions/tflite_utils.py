@@ -43,39 +43,46 @@ def _dequantize_output(output_value: np.ndarray, output_detail: dict) -> np.ndar
 
 def run_tflite_model(
     tflite_path: Path,
-    x_pytorch_layout: np.ndarray,
+    test_x_pytorch_layout: np.ndarray,
     input_layout: InputLayout = "keras",
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Run a saved `.tflite` model on normalized [N, C, L] inputs.
-
-    Use `input_layout="keras"` for Keras-exported models that expect [N, L, C].
-    Use `input_layout="pytorch"` for models that already expect [N, C, L].
     """
-    samples = np.asarray(x_pytorch_layout, dtype=np.float32)
+    Run a saved `.tflite` model on a batch of normalized test samples and returns: (output_logits, metadata).
+    _quantize_input() and _dequantize_output() are used to let the same validation function work for
+    float, dynamic-range, and full-int8 TFLite models.
+    """
+
+    samples = np.asarray(test_x_pytorch_layout, dtype=np.float32)
+    # Use `input_layout="keras"` for Keras-exported models that expect [N, L, C].
+    # Use `input_layout="pytorch"` for models that already expect [N, C, L].
     if input_layout == "keras":
-        samples = torch_to_keras_input(samples)
+        samples = torch_to_keras_input(samples) # [N, L, C].
     elif input_layout != "pytorch":
         raise ValueError(f"input_layout must be 'keras' or 'pytorch', got {input_layout!r}.")
 
+    #  creates a desktop TFLite interpreter for testing.
     interpreter = tf.lite.Interpreter(model_path=str(tflite_path))
+    # read the model’s expected input and output tensor info
     input_detail = interpreter.get_input_details()[0]
     output_detail = interpreter.get_output_details()[0]
-    input_shape = tuple(int(v) for v in input_detail["shape"][1:])
+    input_shape = tuple(int(v) for v in input_detail["shape"][1:]) # input_shape removes the batch dimension: [L, C]
 
-    if tuple(samples.shape[1:]) != input_shape:
+    if tuple(samples.shape[1:]) != input_shape: # prevents feeding [3, 540] into a model that expects [540, 3]
         raise ValueError(
             f"TFLite model expects per-sample input shape {input_shape}, "
             f"but got {tuple(samples.shape[1:])}."
         )
-
+    # Allocate memory for the model's tensors, including input and output buffers.
     interpreter.allocate_tensors()
     outputs = []
+    # runs inference one sample at a time
+    # _quantize_input() and _dequantize_output() automatically decide if (de)quantatization is needed according to the model's quantization parameters.
     for sample in samples:
-        input_value = sample[np.newaxis, ...]
-        interpreter.set_tensor(input_detail["index"], _quantize_input(input_value, input_detail))
-        interpreter.invoke()
-        output_value = interpreter.get_tensor(output_detail["index"])
-        outputs.append(_dequantize_output(output_value, output_detail)[0])
+        input_value = sample[np.newaxis, ...] # TFLite expects the batch dimension
+        interpreter.set_tensor(input_detail["index"], _quantize_input(input_value, input_detail)) # Converts the input to int8 only if it is quantized
+        interpreter.invoke() # Runs the model
+        output_value = interpreter.get_tensor(output_detail["index"]) # Gets the output
+        outputs.append(_dequantize_output(output_value, output_detail)[0]) # converts output back to float only if it is quantized
 
     metadata = {
         "input_shape": [int(v) for v in input_detail["shape"]],

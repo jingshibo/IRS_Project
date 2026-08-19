@@ -15,7 +15,7 @@ def predict_keras_logits_prob(
     )
 
     keras_logits = model.predict(
-        torch_to_keras_input(x_pytorch_layout),
+        torch_to_keras_input(x_pytorch_layout), # Convert PyTorch tensor layout to Keras tensor layout
         batch_size=batch_size,
         verbose=0,
     ).astype(np.float32, copy=False)

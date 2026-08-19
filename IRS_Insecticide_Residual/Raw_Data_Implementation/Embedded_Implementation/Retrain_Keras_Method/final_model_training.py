@@ -51,7 +51,7 @@ OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 
 # If FINAL_EPOCHS is None and RUN_CV_FOR_EPOCH_SELECTION is True, the script
 # reruns Keras CV and uses the second-largest best epoch for final training.
-FINAL_EPOCHS = None
+FINAL_EPOCHS = 60
 RUN_CV_FOR_EPOCH_SELECTION = True
 MAX_CV_EPOCHS = 100
 
