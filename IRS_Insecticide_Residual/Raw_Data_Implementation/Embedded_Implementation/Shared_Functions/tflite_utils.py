@@ -125,7 +125,7 @@ def validate_keras_tflite_variant(
         "interpreter_metadata": interpreter_metadata,
     }
 
-    if torch_logits is not None and torch_accuracy is not None:
+    if torch_logits is not None and torch_accuracy is not None: # for models that were originally exported from PyTorch
         accuracy_diff_vs_pytorch = accuracy - torch_accuracy
         parity_vs_pytorch = compute_logit_parity(torch_logits, output_logits)
         result["accuracy_diff_vs_pytorch"] = accuracy_diff_vs_pytorch
@@ -136,7 +136,7 @@ def validate_keras_tflite_variant(
         print(f"{variant_name} max abs logit diff vs Keras: {parity_vs_keras['max_abs_diff']:.8g}")
         warning_parity = parity_vs_pytorch
         warning_text = "Check Keras transfer, TFLite conversion, and quantization."
-    else:
+    else: # for models that were originally exported from Keras
         result["parity"] = parity_vs_keras
         print(f"{variant_name} holdout test accuracy: {accuracy:.4f} ({accuracy_diff_vs_keras:+.4f} vs Keras)")
         print(f"{variant_name} max abs logit diff vs Keras: {parity_vs_keras['max_abs_diff']:.8g}")

@@ -3,6 +3,11 @@
   "primary_training_framework": "keras",
   "deployment_model_format": "keras_and_tflite",
   "keras_model_path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Retrain_Keras_Method/Results/shared_backbone_final.keras",
+  "tflite_variant_paths": {
+    "float": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Retrain_Keras_Method/Results/shared_backbone_float.tflite",
+    "dynamic_wi8_afp32": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Retrain_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite",
+    "full_int8": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Retrain_Keras_Method/Results/shared_backbone_full_int8.tflite"
+  },
   "class_order": [
     "LOW",
     "TARGET",

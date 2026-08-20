@@ -167,7 +167,7 @@ model = build_compiled_model(
     config=config,
 )
 model.summary()
-# Keras trains on [N, L, C], so convert the normalized [N, C, L] data before fitting.
+# Train Keras on training data [N, L, C]. Convert the normalized [N, C, L] data before fitting.
 history = fit_keras_model(
     model,
     torch_to_keras_input(x_train_norm),

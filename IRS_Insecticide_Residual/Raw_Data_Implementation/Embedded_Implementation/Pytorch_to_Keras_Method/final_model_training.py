@@ -231,6 +231,7 @@ if parity["max_abs_diff"] > config.parity_warning_threshold:
 tflite_variant_paths = {}
 tflite_validation_results = {}
 if not SKIP_TFLITE_EXPORT:
+    # Export TFLite variants from the transferred Keras model, using the representative samples for int8 calibration.
     tflite_variant_paths = export_keras_tflite_variants(
         keras_model=keras_model,
         output_dir=Path(config.output_dir),
@@ -239,6 +240,7 @@ if not SKIP_TFLITE_EXPORT:
     )
 
     if not SKIP_TFLITE_VALIDATION:
+        # Validate the exported TFLite variants on the holdout test set and compare to PyTorch and Keras results.
         for variant_name, variant_path in tflite_variant_paths.items():
             tflite_validation_results[variant_name] = validate_keras_tflite_variant(
                 variant_name=variant_name,

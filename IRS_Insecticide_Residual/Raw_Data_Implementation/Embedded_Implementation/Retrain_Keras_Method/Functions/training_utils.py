@@ -20,7 +20,10 @@ from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 
 
 class KerasSignalSequence(tf.keras.utils.Sequence):
-    """Batch generator with PyTorch-equivalent random temporal shift augmentation."""
+    """Batch generator with PyTorch-equivalent random temporal shift augmentation.
+    The main reason for using this instead of passing arrays directly to model.fit() is that
+    it applies random temporal shift augmentation batch-by-batch, similar to the PyTorch training pipeline.
+    """
 
     def __init__(
         self,
@@ -167,6 +170,7 @@ def fit_keras_model(
     callbacks: Optional[list[tf.keras.callbacks.Callback]] = None,
     seed_offset: int = 0,
 ) -> tf.keras.callbacks.History:
+    # Creates the Keras training data generator with PyTorch-equivalent random temporal shift augmentation.
     train_sequence = KerasSignalSequence(
         x_train_keras,
         y_train_one_hot,
