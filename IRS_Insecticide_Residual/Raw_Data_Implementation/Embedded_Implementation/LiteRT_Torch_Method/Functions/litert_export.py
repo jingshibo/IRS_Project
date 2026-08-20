@@ -9,6 +9,11 @@ import numpy as np
 import torch
 
 
+# AI Edge Quantizer recipe names that mean static/full-int8 quantization:
+# weights are int8 and activations are int8, so representative samples are required for calibration.
+STATIC_CALIBRATION_RECIPES = {"static_wi8_ai8", "static_int8", "w8a8"}
+
+
 def _to_numpy(value) -> np.ndarray:
     if isinstance(value, torch.Tensor):
         return value.detach().cpu().numpy()
@@ -43,7 +48,14 @@ def export_pytorch_model_to_litert(
     output_path: Path,
     sample_input: torch.Tensor, # LiteRT needs sample_input to build a fixed computation graph.
 ) -> tuple[Path, np.ndarray]:
-    """Convert a PyTorch model to float `.tflite` with LiteRT Torch and return sample logits."""
+    """Convert a PyTorch model to float `.tflite` and return in-memory LiteRT sample logits.
+
+    This LiteRT-specific step has no direct equivalent in the Keras exporter:
+    LiteRT Torch first builds an in-memory converted `edge_model`, lets us run
+    that converted model on one sample, and then exports the saved float
+    `.tflite` file. The returned logits are diagnostic output from the
+    in-memory converted model, not from the saved/reloaded `.tflite` file.
+    """
     litert_torch = _import_litert_torch()
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,10 +66,73 @@ def export_pytorch_model_to_litert(
         #  sample_input has two purposes:
         # 1. Gives LiteRT Torch the input shape/dtype needed to convert the model.
         edge_model = litert_torch.convert(model_cpu, (sample_cpu,)) # uses sample_cpu to trace/convert the model.
-        # 2. Provides one sample for a quick conversion parity check.
+        # 2. Provides one sample for a quick PyTorch-vs-in-memory-LiteRT conversion parity check.
         edge_output = edge_model(sample_cpu) # checks the converted LiteRT Torch model output to compare with the original PyTorch model output.
+    # Saved `.tflite` validation happens later with a desktop interpreter; this export step only writes the model file.
     edge_model.export(str(output_path)) # The exported model can be different from the edge_model due to serialization
     return output_path, _to_numpy(edge_output).astype(np.float32, copy=False)
+
+
+def variant_name_for_recipe(recipe_name: str) -> str:
+    """Use readable names for saved comparison arrays and metadata."""
+    if recipe_name == "dynamic_wi8_afp32":
+        return "half_quant_dynamic_wi8_afp32"
+    if recipe_name == "static_wi8_ai8":
+        return "full_quant_static_wi8_ai8"
+    return recipe_name
+
+
+def export_litert_tflite_variants(
+    model: torch.nn.Module,
+    output_dir: Path,
+    sample_input: torch.Tensor,
+    representative_samples: np.ndarray,
+    quantize_recipes: tuple[str, ...],
+    calibration_threads: int = 16,
+) -> tuple[np.ndarray, dict[str, Path]]:
+    """Export the float LiteRT model and configured quantized TFLite variants.
+
+    LiteRT Torch and AI Edge Quantizer are a two-stage pipeline:
+    1. Export PyTorch to a float `.tflite` model.
+    2. Quantize that saved float `.tflite` into the requested deployment variants.
+
+    All saved model paths are returned through `tflite_variant_paths`; the
+    separate logits return value is only the in-memory LiteRT conversion
+    diagnostic from `export_pytorch_model_to_litert`.
+    """
+    output_dir = Path(output_dir)
+    float_tflite_path = output_dir / "shared_backbone_litert_float.tflite"
+    # The float model is the base artifact; all quantized variants below are produced from this saved file.
+    float_tflite_path, float_edge_sample_logits = export_pytorch_model_to_litert(
+        model,
+        output_path=float_tflite_path,
+        sample_input=sample_input,
+    )
+    tflite_variant_paths = {"float": float_tflite_path}
+
+    for recipe_name in quantize_recipes:
+        variant_name = variant_name_for_recipe(recipe_name)
+        variant_tflite_path = output_dir / f"shared_backbone_litert_{recipe_name}.tflite"
+        if recipe_name in STATIC_CALIBRATION_RECIPES:
+            # Static W8A8/full-int8 recipes need representative samples to calibrate activation ranges.
+            quantize_litert_model_with_calibration(
+                source_path=float_tflite_path,
+                output_path=variant_tflite_path,
+                recipe_name=recipe_name,
+                representative_samples=representative_samples,
+                calibration_threads=calibration_threads,
+            )
+        else:
+            # Dynamic or weight-only recipes quantize the saved float model without calibration data.
+            quantize_litert_model(
+                source_path=float_tflite_path,
+                output_path=variant_tflite_path,
+                recipe_name=recipe_name,
+            )
+        print(f"Saved quantized LiteRT model: {variant_tflite_path}")
+        tflite_variant_paths[variant_name] = variant_tflite_path
+
+    return float_edge_sample_logits, tflite_variant_paths
 
 
 def quantize_litert_model(
@@ -72,10 +147,8 @@ def quantize_litert_model(
     static quantization should be handled separately after confirming the exact
     installed ai-edge-quantizer calibration API.
     """
-    # ESP32-S3 deployment will likely need calibrated full-int8 eventually.
-    # This helper does not perform that calibration step; use representative_final.npy
-    # later with the installed ai-edge-quantizer calibration API.
-    if recipe_name in {"static_wi8_ai8", "static_int8", "w8a8"}:
+    # Static/full-int8 recipes need calibration and should use quantize_litert_model_with_calibration.
+    if recipe_name in STATIC_CALIBRATION_RECIPES:
         raise ValueError(
             "Static W8A8 quantization needs calibration data and is not handled by this helper. "
             "Export the float LiteRT model first, then use a calibrated AI Edge Quantizer flow."
@@ -244,10 +317,11 @@ def run_tflite_model(
     x_pytorch_layout: np.ndarray,
     limit: Optional[int] = None, # The number of test samples to run
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Run the exported `.tflite` model on the computer sample-by-sample on [N, C, L] input."""
+    """Run the saved `.tflite` model on the computer sample-by-sample on [N, C, L] input."""
     samples = np.asarray(x_pytorch_layout, dtype=np.float32)
     if limit is not None:
         samples = samples[:limit]
+    # This validates the serialized deployment artifact, unlike the in-memory edge_model check during export.
     interpreter = _load_interpreter(Path(tflite_path)) # Loads the .tflite model using a desktop interpreter.
     # Gets model input/output information
     input_detail = interpreter.get_input_details()[0]

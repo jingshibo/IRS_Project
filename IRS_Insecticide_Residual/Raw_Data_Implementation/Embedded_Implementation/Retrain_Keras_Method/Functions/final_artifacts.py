@@ -33,6 +33,7 @@ def save_final_artifacts(
     removed_zero_sample_indices: Sequence[int],
     test_accuracy: float,
     history: tf.keras.callbacks.History,
+    tflite_variant_paths: Optional[dict[str, Path]] = None,
     tflite_validation_results: Optional[dict[str, dict[str, object]]] = None,
 ) -> dict[str, Path]:
     """Save the final Keras model and every artifact needed by TFLite/ESP32."""
@@ -78,17 +79,25 @@ def save_final_artifacts(
                 )
     np.savez(predictions_path, **prediction_payload)
 
+    tflite_variant_paths = dict(tflite_variant_paths or {})
+    tflite_validation_results = tflite_validation_results or {}
+    if not tflite_variant_paths:
+        tflite_variant_paths = {
+            variant_name: Path(result["path"])
+            for variant_name, result in tflite_validation_results.items()
+            if result.get("path") is not None
+        }
     tflite_variant_summary = {}
-    if tflite_validation_results is not None:
-        for variant_name, result in tflite_validation_results.items():
-            tflite_variant_summary[variant_name] = {
-                "path": str(result.get("path")) if result.get("path") is not None else None,
-                "accuracy": result.get("accuracy"),
-                "accuracy_diff_vs_keras": result.get("accuracy_diff_vs_keras"),
-                "logit_parity": result.get("parity"),
-                "logit_parity_vs_keras": result.get("parity_vs_keras"),
-                "interpreter_metadata": result.get("interpreter_metadata"),
-            }
+    for variant_name, variant_path in tflite_variant_paths.items():
+        result = tflite_validation_results.get(variant_name, {})
+        tflite_variant_summary[variant_name] = {
+            "path": str(variant_path),
+            "accuracy": result.get("accuracy"),
+            "accuracy_diff_vs_keras": result.get("accuracy_diff_vs_keras"),
+            "logit_parity": result.get("parity"),
+            "logit_parity_vs_keras": result.get("parity_vs_keras"),
+            "interpreter_metadata": result.get("interpreter_metadata"),
+        }
     comparison_summary = {
         "retrained_keras": {
             "accuracy": test_accuracy,
@@ -103,6 +112,7 @@ def save_final_artifacts(
         "primary_training_framework": "keras",
         "deployment_model_format": "keras_and_tflite" if tflite_variant_summary else "keras",
         "keras_model_path": str(keras_model_path),
+        "tflite_variant_paths": {name: str(path) for name, path in tflite_variant_paths.items()},
         "class_order": list(config.class_order),
         "label_to_idx": label_to_idx,
         "idx_to_label": {str(k): v for k, v in idx_to_label.items()},
@@ -167,8 +177,6 @@ def save_final_artifacts(
         "predictions": predictions_path,
         "metadata": metadata_path,
     }
-    if tflite_validation_results is not None:
-        for variant_name, result in tflite_validation_results.items():
-            if result.get("path") is not None:
-                artifacts[f"{variant_name}_model"] = Path(result["path"])
+    for variant_name, variant_path in tflite_variant_paths.items():
+        artifacts[f"{variant_name}_model"] = Path(variant_path)
     return artifacts

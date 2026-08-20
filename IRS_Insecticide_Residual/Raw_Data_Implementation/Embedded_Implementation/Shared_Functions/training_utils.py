@@ -133,16 +133,6 @@ def train_final_pytorch_model(
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=config.label_smoothing)
-    scheduler = None
-    if config.final_use_train_loss_scheduler and config.use_lr_scheduler:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            factor=config.scheduler_factor,
-            patience=config.scheduler_patience,
-            min_lr=config.scheduler_min_lr,
-        )
-
     history = {"train_loss": [], "train_acc": [], "lr": []}
     model.train()
     for epoch in range(final_epochs):
@@ -169,8 +159,6 @@ def train_final_pytorch_model(
         history["train_loss"].append(float(train_loss))
         history["train_acc"].append(float(train_acc))
         history["lr"].append(float(optimizer.param_groups[0]["lr"]))
-        if scheduler is not None:
-            scheduler.step(train_loss)
 
         if (epoch + 1) % config.tensorboard_write_every_n == 0 or epoch == final_epochs - 1:
             print(

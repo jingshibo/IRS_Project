@@ -61,9 +61,6 @@ RANDOM_SHIFT_FILL_MODE = "wrap"
 DEVICE = None  # Use None for auto, or set "cpu", "cuda", "cuda:0".
 NUM_WORKERS = 0
 
-# Keep False by default because final training has no validation split.
-FINAL_USE_TRAIN_LOSS_SCHEDULER = False
-
 REPRESENTATIVE_COUNT = 128  # The number of normalized training samples saved for optional TFLite int8 calibration.
 PARITY_WARNING_THRESHOLD = 1e-4  # Warning cutoff for PyTorch-vs-Keras output mismatch.
 
@@ -94,7 +91,6 @@ FINAL_CONFIG = PytorchToKerasConfig(
     random_shift_max_points=RANDOM_SHIFT_MAX_POINTS,
     random_shift_fill_mode=RANDOM_SHIFT_FILL_MODE,
     representative_count=REPRESENTATIVE_COUNT,
-    final_use_train_loss_scheduler=FINAL_USE_TRAIN_LOSS_SCHEDULER,
     device=DEVICE,
     num_workers=NUM_WORKERS,
     parity_warning_threshold=PARITY_WARNING_THRESHOLD,
@@ -320,6 +316,7 @@ artifacts = save_final_artifacts(
     keras_test_accuracy=keras_test_accuracy,
     parity=parity,
     train_history=train_history,
+    tflite_variant_paths=tflite_variant_paths,
     tflite_validation_results=tflite_validation_results,
 )
 

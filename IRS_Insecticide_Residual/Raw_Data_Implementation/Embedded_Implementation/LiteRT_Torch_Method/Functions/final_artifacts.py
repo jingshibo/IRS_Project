@@ -34,7 +34,7 @@ def save_final_artifacts(
     removed_zero_sample_indices: Sequence[int],
     torch_test_accuracy: float,
     train_history: dict[str, list[float]],
-    float_tflite_path: Optional[Path] = None,
+    tflite_variant_paths: Optional[dict[str, Path]] = None,
     float_edge_sample_logits: Optional[np.ndarray] = None,
     float_edge_sample_parity: Optional[dict[str, float]] = None,
     tflite_validation_results: Optional[dict[str, dict[str, object]]] = None,
@@ -111,17 +111,20 @@ def save_final_artifacts(
                 )
     np.savez(predictions_path, **prediction_payload)
 
-    # Build a compact summary for each TFLite-variant model. This is one item in the final metadata file.
+    # Build one compact summary per exported TFLite variant. Paths come from
+    # tflite_variant_paths; validation results only add optional metrics.
+    tflite_variant_paths = tflite_variant_paths or {}
+    tflite_validation_results = tflite_validation_results or {}
     tflite_variant_summary = {}
-    if tflite_validation_results is not None:
-        for variant_name, result in tflite_validation_results.items():
-            tflite_variant_summary[variant_name] = {
-                "path": str(result.get("path")) if result.get("path") is not None else None,
-                "accuracy": result.get("accuracy"),
-                "accuracy_diff_vs_pytorch": result.get("accuracy_diff_vs_pytorch"),
-                "logit_parity": result.get("parity"),
-                "interpreter_metadata": result.get("interpreter_metadata"),
-            }
+    for variant_name, variant_path in tflite_variant_paths.items():
+        result = tflite_validation_results.get(variant_name, {})
+        tflite_variant_summary[variant_name] = {
+            "path": str(variant_path),
+            "accuracy": result.get("accuracy"),
+            "accuracy_diff_vs_pytorch": result.get("accuracy_diff_vs_pytorch"),
+            "logit_parity": result.get("parity"),
+            "interpreter_metadata": result.get("interpreter_metadata"),
+        }
     comparison_summary = {
         "original_pytorch": {
             "accuracy": torch_test_accuracy,
@@ -138,9 +141,9 @@ def save_final_artifacts(
     metadata = {
         "model_name": config.model_name,
         "primary_training_framework": "pytorch",
-        "deployment_model_format": "litert_torch_tflite",
+        "deployment_model_format": "litert_torch_tflite" if tflite_variant_summary else "pytorch",
         "pytorch_checkpoint_path": str(pytorch_checkpoint_path),
-        "float_tflite_path": str(float_tflite_path) if float_tflite_path is not None else None,
+        "tflite_variant_paths": {name: str(path) for name, path in tflite_variant_paths.items()},
         "quantize_recipes": list(config.quantize_recipes),
         "class_order": list(config.class_order),
         "label_to_idx": label_to_idx,
@@ -169,7 +172,6 @@ def save_final_artifacts(
         "weight_decay": config.weight_decay,
         "label_smoothing": config.label_smoothing,
         "use_lr_scheduler": config.use_lr_scheduler,
-        "final_use_train_loss_scheduler": config.final_use_train_loss_scheduler,
         "scheduler_factor": config.scheduler_factor,
         "scheduler_patience": config.scheduler_patience,
         "scheduler_min_lr": config.scheduler_min_lr,
@@ -202,10 +204,6 @@ def save_final_artifacts(
         "predictions": predictions_path,
         "metadata": metadata_path,
     }
-    if float_tflite_path is not None:
-        artifacts["float_tflite_model"] = Path(float_tflite_path)
-    if tflite_validation_results is not None:
-        for variant_name, result in tflite_validation_results.items():
-            if result.get("path") is not None:
-                artifacts[f"{variant_name}_model"] = Path(result["path"])
+    for variant_name, variant_path in tflite_variant_paths.items():
+        artifacts[f"{variant_name}_model"] = Path(variant_path)
     return artifacts

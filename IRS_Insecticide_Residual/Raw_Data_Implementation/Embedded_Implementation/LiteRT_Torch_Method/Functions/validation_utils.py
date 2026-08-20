@@ -9,6 +9,7 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Li
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.litert_export import (
     run_tflite_model,
+    variant_name_for_recipe,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.metrics import (
     compute_logit_parity,
@@ -16,13 +17,23 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Sh
 )
 
 
-def variant_name_for_recipe(recipe_name: str) -> str:
-    """Use readable names for saved comparison arrays and metadata."""
-    if recipe_name == "dynamic_wi8_afp32":
-        return "half_quant_dynamic_wi8_afp32"
-    if recipe_name == "static_wi8_ai8":
-        return "full_quant_static_wi8_ai8"
-    return recipe_name
+def build_litert_validation_placeholders(
+    tflite_variant_paths: dict[str, Path],
+) -> dict[str, dict[str, object]]:
+    """Build metadata placeholders when saved LiteRT/TFLite validation is skipped."""
+    return {
+        variant_name: {
+            "path": variant_path,
+            "logits": None,
+            "prob": None,
+            "pred_idx": None,
+            "accuracy": None,
+            "accuracy_diff_vs_pytorch": None,
+            "parity": None,
+            "interpreter_metadata": None,
+        }
+        for variant_name, variant_path in tflite_variant_paths.items()
+    }
 
 
 def validate_tflite_variant(

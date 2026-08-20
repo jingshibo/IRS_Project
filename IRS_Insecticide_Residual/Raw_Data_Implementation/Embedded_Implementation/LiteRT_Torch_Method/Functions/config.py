@@ -37,7 +37,6 @@ class LiteRTTorchConfig(EmbeddedPipelineConfig): # LiteRTTorchConfig inherits me
     num_workers: int = 0
     tensorboard_log_dir: Optional[str] = None
     tensorboard_write_every_n: int = 10
-    final_use_train_loss_scheduler: bool = False
     parity_warning_threshold: float = 1e-4
     quantize_recipes: tuple[str, ...] = ()
     calibration_threads: int = 16

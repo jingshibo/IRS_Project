@@ -18,9 +18,7 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Li
     save_final_artifacts,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.litert_export import (
-    export_pytorch_model_to_litert,
-    quantize_litert_model,
-    quantize_litert_model_with_calibration,
+    export_litert_tflite_variants,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Shared_Functions.calibration import (
     build_stratified_representative_indices,
@@ -35,8 +33,8 @@ from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.Sh
     train_final_pytorch_model,
 )
 from IRS_Insecticide_Residual.Raw_Data_Implementation.Embedded_Implementation.LiteRT_Torch_Method.Functions.validation_utils import (
+    build_litert_validation_placeholders,
     validate_tflite_variant,
-    variant_name_for_recipe,
 )
 from IRS_Insecticide_Residual.Utility_Functions import Preprocessing
 
@@ -70,9 +68,6 @@ RANDOM_SHIFT_FILL_MODE = "wrap"
 DEVICE = None  # Use None for auto, or set "cpu", "cuda", "cuda:0".
 NUM_WORKERS = 0
 
-# Keep False by default because final training has no validation split.
-FINAL_USE_TRAIN_LOSS_SCHEDULER = False  # Whether to use LR scheduler in final training as previously used in CV training.
-
 REPRESENTATIVE_COUNT = 128  # The number of normalized training sample saved for TFLite int8 quantization calibration.
 PARITY_WARNING_THRESHOLD = 1e-4  # the warning cutoff for model-output mismatch.
 CALIBRATION_THREADS = 16  # Number of CPU threads used by ai-edge-quantizer calibration.
@@ -101,7 +96,6 @@ FINAL_CONFIG = LiteRTTorchConfig(  # including both properties from config.Embed
     random_shift_max_points=RANDOM_SHIFT_MAX_POINTS,
     random_shift_fill_mode=RANDOM_SHIFT_FILL_MODE,
     representative_count=REPRESENTATIVE_COUNT,
-    final_use_train_loss_scheduler=FINAL_USE_TRAIN_LOSS_SCHEDULER,
     device=DEVICE,
     num_workers=NUM_WORKERS,
     parity_warning_threshold=PARITY_WARNING_THRESHOLD,
@@ -173,53 +167,28 @@ print(f"Final PyTorch holdout test accuracy: {torch_test_accuracy:.4f}")
 
 
 # =========================
-# Convert Pytorch model to tflite file
+# Export and validate LiteRT/TFLite variants from final PyTorch model
 # =========================
 output_dir = Path(config.output_dir)  # Folder where final LiteRT artifacts are saved.
-float_tflite_path = None  # Path to the exported float LiteRT/TFLite model.
 float_edge_sample_logits = None  # Float LiteRT Torch converted-model logits for one sample before saving TFLite.
 float_edge_sample_parity = None  # Difference summary between PyTorch logits and float LiteRT Torch converted-model logits.
 tflite_variant_paths = {}  # Paths for float, half-quant, and full-quant TFLite models.
 tflite_validation_results = {}  # The accuracy, output logits, and parity results for each TFLite model variant.
 
 if not SKIP_LITERT_EXPORT:
-    float_tflite_path = output_dir / "shared_backbone_litert_float.tflite"
-    # sample_input is needed because LiteRT Torch conversion needs to know the model’s expected input shape and data type.
+    # sample_input is needed because LiteRT Torch conversion needs to know the model's expected input shape and data type.
     sample_input = torch.as_tensor(x_test_norm[:1], dtype=torch.float32, device=device)
-    sample_torch_logits = torch_logits[:1]  # take the first sample.
-    # Convert a PyTorch model to `.tflite` file
-    float_tflite_path, float_edge_sample_logits = export_pytorch_model_to_litert(
-        pytorch_model,
-        output_path=float_tflite_path,
+    float_edge_sample_logits, tflite_variant_paths = export_litert_tflite_variants(
+        model=pytorch_model,
+        output_dir=output_dir,
         sample_input=sample_input,
+        representative_samples=representative_samples,
+        quantize_recipes=config.quantize_recipes,
+        calibration_threads=config.calibration_threads,
     )
-    # Compare sample_torch_logits with the LiteRT Torch converted model output for the same sample
-    float_edge_sample_parity = compute_logit_parity(sample_torch_logits, float_edge_sample_logits)
+    # Compare PyTorch logits with the LiteRT Torch converted-model output for the same sample.
+    float_edge_sample_parity = compute_logit_parity(torch_logits[:1], float_edge_sample_logits)
     print(f"Float LiteRT Torch sample max abs logit diff: {float_edge_sample_parity['max_abs_diff']:.8g}")
-    tflite_variant_paths["float"] = float_tflite_path  # save float model path for summary and validation below.
-
-    # Create both quantized versions of the exported TFLite model for side-by-side comparison.
-    for recipe_name in config.quantize_recipes:
-        variant_name = variant_name_for_recipe(recipe_name)
-        variant_tflite_path = output_dir / f"shared_backbone_litert_{recipe_name}.tflite"
-        if recipe_name in {"static_wi8_ai8", "static_int8", "w8a8"}:
-            # Calibrated full-int8 quantization uses real normalized train samples
-            # to estimate activation ranges before writing the int8 .tflite file.
-            quantize_litert_model_with_calibration(
-                source_path=float_tflite_path,
-                output_path=variant_tflite_path,
-                recipe_name=recipe_name,
-                representative_samples=representative_samples,
-                calibration_threads=config.calibration_threads,
-            )
-        else:
-            quantize_litert_model(
-                source_path=float_tflite_path,
-                output_path=variant_tflite_path,
-                recipe_name=recipe_name,
-            )
-        print(f"Saved quantized LiteRT model: {variant_tflite_path}")
-        tflite_variant_paths[variant_name] = variant_tflite_path
 
     # Reload the exported tflite models (float, half-quantized, full-quantized) by desktop TFLite interpreter.
     # And check whether they produce the same output as the original PyTorch model.
@@ -258,21 +227,8 @@ if not SKIP_LITERT_EXPORT:
                 f"{np.array2string(result['logits'][0], precision=6, suppress_small=False)}"
             )
 
-    # If SKIP_TFLITE_VALIDATION is True, we still need to create a placeholder dictionary for tflite_validation_results.
-    elif tflite_variant_paths:
-        tflite_validation_results = {
-            variant_name: {
-                "path": variant_path,
-                "logits": None,
-                "prob": None,
-                "pred_idx": None,
-                "accuracy": None,
-                "accuracy_diff_vs_pytorch": None,
-                "parity": None,
-                "interpreter_metadata": None,
-            }
-            for variant_name, variant_path in tflite_variant_paths.items()
-        }
+    elif tflite_variant_paths: # if validation was skipped but we exported some TFLite files...
+        tflite_validation_results = build_litert_validation_placeholders(tflite_variant_paths)
 
 # =========================
 # Save final tflite outputs
@@ -297,7 +253,7 @@ artifacts = save_final_artifacts(  # Save all important output files, and return
     removed_zero_sample_indices=removed_zero_sample_indices,
     torch_test_accuracy=torch_test_accuracy,
     train_history=train_history,
-    float_tflite_path=float_tflite_path,
+    tflite_variant_paths=tflite_variant_paths,
     float_edge_sample_logits=float_edge_sample_logits,
     float_edge_sample_parity=float_edge_sample_parity,
     tflite_validation_results=tflite_validation_results,

@@ -105,14 +105,10 @@ The final PyTorch training step uses all trainval data. The holdout test split
 is still kept separate and is used only for final evaluation and
 PyTorch-vs-Keras parity checking.
 
-By default, the final PyTorch training step does **not** use
-`ReduceLROnPlateau`, because there is no inner validation split to monitor.
-PyTorch CV epoch selection still uses the tuned scheduler behavior. If you want
-the final full-train run to reduce LR based on training loss, set:
-
-```python
-FINAL_USE_TRAIN_LOSS_SCHEDULER = True
-```
+PyTorch CV epoch selection can use the configured validation-loss scheduler.
+The final PyTorch training step then runs for the selected fixed epoch count
+without a train-loss scheduler, because there is no inner validation split to
+monitor.
 
 ## Transfer Existing PyTorch Weights Only
 

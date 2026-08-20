@@ -59,7 +59,6 @@
   "weight_decay": 0.0001,
   "label_smoothing": 0.3,
   "use_lr_scheduler": true,
-  "final_use_train_loss_scheduler": false,
   "scheduler_factor": 0.7,
   "scheduler_patience": 5,
   "scheduler_min_lr": 1e-06,
@@ -67,12 +66,12 @@
   "random_shift_fill_mode": "wrap",
   "clip_max_value": null,
   "match_pytorch_flatten": true,
-  "torch_test_accuracy": 0.9514824797843666,
-  "keras_test_accuracy": 0.9514824797843666,
+  "torch_test_accuracy": 0.954177897574124,
+  "keras_test_accuracy": 0.954177897574124,
   "pytorch_to_keras_logit_parity": {
-    "max_abs_diff": 0.004834786057472229,
-    "mean_abs_diff": 0.00039666605880483985,
-    "p95_abs_diff": 0.0010025739902630448
+    "max_abs_diff": 0.0019341111183166504,
+    "mean_abs_diff": 0.0003412389487493783,
+    "p95_abs_diff": 0.0008728980901651084
   },
   "tflite_variants_requested": [
     "float",
@@ -82,23 +81,23 @@
   "tflite_variants": {
     "float": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_float.tflite",
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "accuracy_diff_vs_keras": 0.0,
       "logit_parity": {
-        "max_abs_diff": 0.0032672882080078125,
-        "mean_abs_diff": 0.0003477838763501495,
-        "p95_abs_diff": 0.0008848666911944747
+        "max_abs_diff": 0.0015838146209716797,
+        "mean_abs_diff": 0.0003025395853910595,
+        "p95_abs_diff": 0.0007742762682028115
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 0.0032672882080078125,
-        "mean_abs_diff": 0.0003477838763501495,
-        "p95_abs_diff": 0.0008848666911944747
+        "max_abs_diff": 0.0015838146209716797,
+        "mean_abs_diff": 0.0003025395853910595,
+        "p95_abs_diff": 0.0007742762682028115
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 0.0015674978494644165,
-        "mean_abs_diff": 0.00018207792891189456,
-        "p95_abs_diff": 0.00044715404510498047
+        "max_abs_diff": 0.001976609230041504,
+        "mean_abs_diff": 0.0001828052190830931,
+        "p95_abs_diff": 0.00044627190800383687
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -124,23 +123,23 @@
     },
     "dynamic_wi8_afp32": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite",
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "accuracy_diff_vs_keras": 0.0,
       "logit_parity": {
-        "max_abs_diff": 0.08275258541107178,
-        "mean_abs_diff": 0.008745226077735424,
-        "p95_abs_diff": 0.022910654544830322
+        "max_abs_diff": 0.07724037766456604,
+        "mean_abs_diff": 0.010318449698388577,
+        "p95_abs_diff": 0.02644031122326851
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 0.08275258541107178,
-        "mean_abs_diff": 0.008745226077735424,
-        "p95_abs_diff": 0.022910654544830322
+        "max_abs_diff": 0.07724037766456604,
+        "mean_abs_diff": 0.010318449698388577,
+        "p95_abs_diff": 0.02644031122326851
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 0.08491706848144531,
-        "mean_abs_diff": 0.008753553032875061,
-        "p95_abs_diff": 0.02304282784461975
+        "max_abs_diff": 0.07914946973323822,
+        "mean_abs_diff": 0.010306889191269875,
+        "p95_abs_diff": 0.026702653616666794
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -166,23 +165,23 @@
     },
     "full_int8": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_full_int8.tflite",
-      "accuracy": 0.9460916442048517,
-      "accuracy_diff_vs_pytorch": -0.005390835579514919,
-      "accuracy_diff_vs_keras": -0.005390835579514919,
+      "accuracy": 0.9595687331536388,
+      "accuracy_diff_vs_pytorch": 0.005390835579514808,
+      "accuracy_diff_vs_keras": 0.005390835579514808,
       "logit_parity": {
-        "max_abs_diff": 1.6697860956192017,
-        "mean_abs_diff": 0.0758720189332962,
-        "p95_abs_diff": 0.20499391853809357
+        "max_abs_diff": 1.375441074371338,
+        "mean_abs_diff": 0.08448370546102524,
+        "p95_abs_diff": 0.21472689509391785
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 1.6697860956192017,
-        "mean_abs_diff": 0.0758720189332962,
-        "p95_abs_diff": 0.20499391853809357
+        "max_abs_diff": 1.375441074371338,
+        "mean_abs_diff": 0.08448370546102524,
+        "p95_abs_diff": 0.21472689509391785
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 1.6686575412750244,
-        "mean_abs_diff": 0.07581247389316559,
-        "p95_abs_diff": 0.2051832377910614
+        "max_abs_diff": 1.375200867652893,
+        "mean_abs_diff": 0.08447462320327759,
+        "p95_abs_diff": 0.2147270143032074
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -201,47 +200,47 @@
         ],
         "output_dtype": "<class 'numpy.int8'>",
         "output_quantization": [
-          0.013383039273321629,
-          -13.0
+          0.012755542062222958,
+          -14.0
         ]
       }
     }
   },
   "comparison_summary": {
     "original_pytorch": {
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.pth"
     },
     "transferred_keras": {
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 0.004834786057472229,
-        "mean_abs_diff": 0.00039666605880483985,
-        "p95_abs_diff": 0.0010025739902630448
+        "max_abs_diff": 0.0019341111183166504,
+        "mean_abs_diff": 0.0003412389487493783,
+        "p95_abs_diff": 0.0008728980901651084
       },
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_final.keras"
     },
     "float": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_float.tflite",
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "accuracy_diff_vs_keras": 0.0,
       "logit_parity": {
-        "max_abs_diff": 0.0032672882080078125,
-        "mean_abs_diff": 0.0003477838763501495,
-        "p95_abs_diff": 0.0008848666911944747
+        "max_abs_diff": 0.0015838146209716797,
+        "mean_abs_diff": 0.0003025395853910595,
+        "p95_abs_diff": 0.0007742762682028115
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 0.0032672882080078125,
-        "mean_abs_diff": 0.0003477838763501495,
-        "p95_abs_diff": 0.0008848666911944747
+        "max_abs_diff": 0.0015838146209716797,
+        "mean_abs_diff": 0.0003025395853910595,
+        "p95_abs_diff": 0.0007742762682028115
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 0.0015674978494644165,
-        "mean_abs_diff": 0.00018207792891189456,
-        "p95_abs_diff": 0.00044715404510498047
+        "max_abs_diff": 0.001976609230041504,
+        "mean_abs_diff": 0.0001828052190830931,
+        "p95_abs_diff": 0.00044627190800383687
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -267,23 +266,23 @@
     },
     "dynamic_wi8_afp32": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_dynamic_wi8_afp32.tflite",
-      "accuracy": 0.9514824797843666,
+      "accuracy": 0.954177897574124,
       "accuracy_diff_vs_pytorch": 0.0,
       "accuracy_diff_vs_keras": 0.0,
       "logit_parity": {
-        "max_abs_diff": 0.08275258541107178,
-        "mean_abs_diff": 0.008745226077735424,
-        "p95_abs_diff": 0.022910654544830322
+        "max_abs_diff": 0.07724037766456604,
+        "mean_abs_diff": 0.010318449698388577,
+        "p95_abs_diff": 0.02644031122326851
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 0.08275258541107178,
-        "mean_abs_diff": 0.008745226077735424,
-        "p95_abs_diff": 0.022910654544830322
+        "max_abs_diff": 0.07724037766456604,
+        "mean_abs_diff": 0.010318449698388577,
+        "p95_abs_diff": 0.02644031122326851
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 0.08491706848144531,
-        "mean_abs_diff": 0.008753553032875061,
-        "p95_abs_diff": 0.02304282784461975
+        "max_abs_diff": 0.07914946973323822,
+        "mean_abs_diff": 0.010306889191269875,
+        "p95_abs_diff": 0.026702653616666794
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -309,23 +308,23 @@
     },
     "full_int8": {
       "path": "/mnt/c/Users/Shibo.Jing/PycharmProjects/IRS_Project/IRS_Insecticide_Residual/Raw_Data_Implementation/Embedded_Implementation/Pytorch_to_Keras_Method/Results/shared_backbone_full_int8.tflite",
-      "accuracy": 0.9460916442048517,
-      "accuracy_diff_vs_pytorch": -0.005390835579514919,
-      "accuracy_diff_vs_keras": -0.005390835579514919,
+      "accuracy": 0.9595687331536388,
+      "accuracy_diff_vs_pytorch": 0.005390835579514808,
+      "accuracy_diff_vs_keras": 0.005390835579514808,
       "logit_parity": {
-        "max_abs_diff": 1.6697860956192017,
-        "mean_abs_diff": 0.0758720189332962,
-        "p95_abs_diff": 0.20499391853809357
+        "max_abs_diff": 1.375441074371338,
+        "mean_abs_diff": 0.08448370546102524,
+        "p95_abs_diff": 0.21472689509391785
       },
       "logit_parity_vs_pytorch": {
-        "max_abs_diff": 1.6697860956192017,
-        "mean_abs_diff": 0.0758720189332962,
-        "p95_abs_diff": 0.20499391853809357
+        "max_abs_diff": 1.375441074371338,
+        "mean_abs_diff": 0.08448370546102524,
+        "p95_abs_diff": 0.21472689509391785
       },
       "logit_parity_vs_keras": {
-        "max_abs_diff": 1.6686575412750244,
-        "mean_abs_diff": 0.07581247389316559,
-        "p95_abs_diff": 0.2051832377910614
+        "max_abs_diff": 1.375200867652893,
+        "mean_abs_diff": 0.08447462320327759,
+        "p95_abs_diff": 0.2147270143032074
       },
       "interpreter_metadata": {
         "input_shape": [
@@ -344,136 +343,136 @@
         ],
         "output_dtype": "<class 'numpy.int8'>",
         "output_quantization": [
-          0.013383039273321629,
-          -13.0
+          0.012755542062222958,
+          -14.0
         ]
       }
     }
   },
   "train_history": {
     "train_loss": [
-      1.0207400807967553,
-      0.9192712041047904,
-      0.8569303613442641,
-      0.8136004163668706,
-      0.7892186980981093,
-      0.7724436805798457,
-      0.7639510833300077,
-      0.7495987901320824,
-      0.7533933786245492,
-      0.733674626167004,
-      0.7297874698272118,
-      0.7200511336326599,
-      0.7177823488528912,
-      0.713082346549401,
-      0.7139248325274541,
-      0.7135688524979812,
-      0.7072591387308561,
-      0.7050481603695796,
-      0.6986136482312129,
-      0.6955087927671579,
-      0.6964133280974169,
-      0.6973177414674026,
-      0.6936732741502615,
-      0.6929240290935222,
-      0.6878941545119652,
-      0.6922212472328773,
-      0.686843950014848,
-      0.6873943264667804,
-      0.683569059922145,
-      0.6835047364234924,
-      0.681742694744697,
-      0.6805619698304396,
-      0.6817813882460961,
-      0.6826567869919997,
-      0.6766346683868996,
-      0.6782623703663165,
-      0.6740740583493159,
-      0.6780753493309021,
-      0.674057386471675,
-      0.6759227064939646,
-      0.6728855995031503,
-      0.6717144168340243,
-      0.671579568202679,
-      0.6694870435274565,
-      0.6751692395943861,
-      0.6719916224479675,
-      0.6715240249266992,
-      0.6692780219591581,
-      0.6654588763530438,
-      0.6683630613180307,
-      0.6674662039830135,
-      0.6708910767848675,
-      0.670453221981342,
-      0.664873220370366,
-      0.6658841949242812,
-      0.6656176346998949,
-      0.6635750403771034,
-      0.6639783254036536,
-      0.6626541266074547,
-      0.6635165416277372
+      1.02031194796929,
+      0.9180582147378188,
+      0.8556509228853079,
+      0.8138683053163381,
+      0.7889200476499704,
+      0.7677020329695482,
+      0.7621697031534636,
+      0.7504391560187706,
+      0.7520058925335223,
+      0.7346351981163025,
+      0.7275833340791555,
+      0.7189255916155302,
+      0.7172385224929223,
+      0.713953721523285,
+      0.714576295705942,
+      0.7156358113655678,
+      0.7062180363214933,
+      0.7049591183662415,
+      0.6977117510942312,
+      0.6954336450650141,
+      0.6963112427638127,
+      0.6965629412577703,
+      0.6953387673084552,
+      0.6934215967471783,
+      0.6881320944199195,
+      0.692618873486152,
+      0.6887278767732473,
+      0.6877112883787889,
+      0.6826006779303917,
+      0.6841386263187115,
+      0.6828729436947749,
+      0.6804762730231652,
+      0.6812904660518353,
+      0.6825470713468699,
+      0.6770903394772456,
+      0.6791849723229042,
+      0.6743955181195186,
+      0.6773040688954867,
+      0.6747063196622408,
+      0.6759415938304021,
+      0.6725176646159245,
+      0.6723402894460238,
+      0.6732037553420434,
+      0.6693092025243319,
+      0.6738004812827477,
+      0.6712811589241028,
+      0.6710648344113277,
+      0.6694009267366849,
+      0.6650366306304931,
+      0.669154573403872,
+      0.6670689069307767,
+      0.6692857513060937,
+      0.6705384621253381,
+      0.6651226300459642,
+      0.665785722549145,
+      0.6651206401678232,
+      0.6631270592029278,
+      0.6639442728115962,
+      0.6618549035145687,
+      0.6625278151952303
     ],
     "train_acc": [
-      0.5591346153846154,
-      0.7153846153846154,
-      0.7923076923076923,
-      0.8519230769230769,
-      0.8639423076923077,
-      0.8985576923076923,
-      0.9076923076923077,
-      0.9201923076923076,
-      0.9149038461538461,
-      0.9370192307692308,
-      0.9399038461538461,
-      0.9538461538461539,
-      0.9548076923076924,
-      0.9677884615384615,
-      0.9591346153846154,
-      0.9605769230769231,
+      0.5567307692307693,
+      0.7173076923076923,
+      0.7932692307692307,
+      0.8466346153846154,
+      0.8701923076923077,
+      0.8980769230769231,
+      0.9134615384615384,
+      0.9206730769230769,
+      0.9264423076923077,
+      0.9403846153846154,
+      0.9490384615384615,
+      0.9576923076923077,
+      0.9543269230769231,
       0.9649038461538462,
-      0.9701923076923077,
-      0.9745192307692307,
+      0.958173076923077,
+      0.9615384615384616,
+      0.9682692307692308,
+      0.9682692307692308,
+      0.9764423076923077,
+      0.9740384615384615,
+      0.9769230769230769,
       0.9754807692307692,
       0.975,
-      0.9788461538461538,
-      0.9774038461538461,
+      0.9778846153846154,
+      0.9841346153846153,
       0.9802884615384615,
-      0.9855769230769231,
-      0.9798076923076923,
-      0.9850961538461539,
-      0.9826923076923076,
-      0.9875,
-      0.9822115384615384,
+      0.9817307692307692,
+      0.9807692307692307,
       0.989423076923077,
+      0.9817307692307692,
+      0.9879807692307693,
       0.9903846153846154,
-      0.9875,
-      0.9908653846153846,
-      0.9913461538461539,
+      0.9884615384615385,
+      0.9884615384615385,
+      0.9918269230769231,
       0.9889423076923077,
-      0.9918269230769231,
       0.9908653846153846,
-      0.9918269230769231,
-      0.9923076923076923,
-      0.9956730769230769,
-      0.9913461538461539,
-      0.9956730769230769,
-      0.9956730769230769,
-      0.99375,
-      0.9923076923076923,
+      0.9908653846153846,
+      0.9903846153846154,
+      0.9903846153846154,
       0.9942307692307693,
+      0.9923076923076923,
+      0.9947115384615385,
+      0.9961538461538462,
+      0.9903846153846154,
+      0.9927884615384616,
+      0.9947115384615385,
       0.9932692307692308,
       0.9971153846153846,
-      0.9947115384615385,
-      0.9942307692307693,
-      0.9947115384615385,
-      0.9947115384615385,
       0.9956730769230769,
-      0.9980769230769231,
+      0.9942307692307693,
+      0.9956730769230769,
       0.9947115384615385,
-      0.9980769230769231,
-      0.9966346153846154,
+      0.9951923076923077,
       0.9971153846153846,
-      0.9971153846153846
+      0.9956730769230769,
+      0.9990384615384615,
+      0.9971153846153846,
+      0.9995192307692308,
+      0.9975961538461539
     ],
     "lr": [
       0.0001,
@@ -635,7 +634,6 @@
     "num_workers": 0,
     "tensorboard_log_dir": null,
     "tensorboard_write_every_n": 10,
-    "final_use_train_loss_scheduler": false,
     "parity_warning_threshold": 0.0001,
     "tflite_variants": [
       "float",
