@@ -54,6 +54,10 @@ def log(message: str = "") -> None:
     print(message, flush=True)
 
 
+def log_saved(path: Path) -> None:
+    log(f"Saved: {path}")
+
+
 ## editable demo settings
 excel_path = None  # use None to check the default lab paths
 sheet_name = 0
@@ -76,6 +80,7 @@ cnn_verbose = True
 
 ## load insecticide residual data
 output_dir.mkdir(parents=True, exist_ok=True)
+log(f"Output folder: {output_dir}")
 
 log("Loading insecticide residual data...")
 log("Reading the Excel file can take 20-60 seconds on some machines...")
@@ -113,6 +118,7 @@ individual_raw_path = plot_individual_raw_signal_subplots(
     output_dir / "01_individual_raw_measurements.png",
     sample_indices_by_class=raw_sample_indices,
 )
+log_saved(individual_raw_path)
 
 
 ## overlap raw LOW / TARGET / HIGH signals
@@ -122,6 +128,7 @@ raw_signal_path = plot_raw_signals(
     output_dir / "02_raw_signal_overlay.png",
     sample_indices_by_class=raw_sample_indices,
 )
+log_saved(raw_signal_path)
 
 
 ## show abnormal spikes and the same signals after spike removal
@@ -139,6 +146,7 @@ spike_removal_path = plot_spike_removal_examples(
     spike_examples,
     output_dir / "03_spike_removal_example.png",
 )
+log_saved(spike_removal_path)
 for spike_example in spike_examples:
     log(
         "Spike example: "
@@ -169,6 +177,7 @@ processed_slicing_path = plot_processed_class_average_before_after_slicing(
     signal_data.class_order,
     output_dir / "04_processed_class_average_before_after_slicing.png",
 )
+log_saved(processed_slicing_path)
 
 
 ## train classifiers and reduce features to 2D/3D maps for display
@@ -220,21 +229,25 @@ feature_map_path = plot_cnn_feature_learning_comparison(
     output_dir / "05_cnn_feature_learning_comparison.png",
     show_unknown=False,
 )
+log_saved(feature_map_path)
 feature_map_3d_path = plot_cnn_feature_learning_comparison_3d(
     classification,
     output_dir / "06_cnn_feature_learning_comparison_3d.png",
     show_unknown=False,
 )
+log_saved(feature_map_3d_path)
 feature_map_3d_interactive_path = plot_cnn_feature_learning_comparison_3d_interactive_html(
     classification,
     output_dir / "06_cnn_feature_learning_comparison_3d_interactive.html",
     show_unknown=False,
 )
+log_saved(feature_map_3d_interactive_path)
 classifier_comparison_path = plot_classifier_result_comparison(
     knn_classification,
     cnn_classification,
     output_dir / "07_classifier_result_comparison.png",
 )
+log_saved(classifier_comparison_path)
 
 
 ## classify an unknown example
@@ -243,12 +256,14 @@ unknown_prediction_path = plot_unknown_prediction(
     classification,
     output_dir / "08_unknown_prediction.png",
 )
+log_saved(unknown_prediction_path)
 unknown_game_path = plot_unknown_classification_game_html(
     signal_data.raw_by_class,
     signal_data.processed_by_class,
     classification,
     output_dir / "08_unknown_classification_game.html",
 )
+log_saved(unknown_game_path)
 
 
 ## print demo summary
