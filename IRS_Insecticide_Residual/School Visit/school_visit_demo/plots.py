@@ -1103,6 +1103,7 @@ def plot_unknown_classification_game_html(
     result: DemoClassificationResult,
     output_path: Path,
     max_unknown_candidates_per_class: int = 4,
+    max_clickable_references_per_class: int = 30,
 ) -> Path:
     from plotly.offline import get_plotlyjs
 
@@ -1112,20 +1113,25 @@ def plot_unknown_classification_game_html(
         result=result,
         max_per_class=max_unknown_candidates_per_class,
     )
-    feature_traces_base = _plotly_2d_feature_traces(
-        result=result,
-        include_unknown=False,
-        unknown_visible=False,
-    )
     feature_traces_3d_base = _plotly_3d_feature_traces(
         result=result,
         include_unknown=False,
         unknown_visible=False,
     )
+    class_patterns = _build_class_pattern_payloads(
+        processed_by_class=processed_by_class,
+        class_order=result.class_order,
+    )
+    reference_samples = _build_clickable_reference_payloads(
+        processed_by_class=processed_by_class,
+        result=result,
+        max_per_class=max_clickable_references_per_class,
+    )
     payload = {
         "classOrder": list(result.class_order),
         "unknownSamples": unknown_samples,
-        "featureTracesBase": feature_traces_base,
+        "classPatterns": class_patterns,
+        "referenceSamples": reference_samples,
         "featureTraces3dBase": feature_traces_3d_base,
     }
 
@@ -1161,6 +1167,10 @@ def plot_unknown_classification_game_html(
       font-size: 28px;
       font-weight: 700;
     }}
+    h2 {{
+      margin: 0 0 10px;
+      font-size: 19px;
+    }}
     .controls {{
       display: flex;
       flex-wrap: wrap;
@@ -1181,9 +1191,40 @@ def plot_unknown_classification_game_html(
       border-color: var(--blue);
       color: white;
     }}
+    button.choice {{
+      min-width: 104px;
+      font-size: 18px;
+      font-weight: 700;
+    }}
+    button.choice.selected {{
+      background: #111111;
+      border-color: #111111;
+      color: white;
+    }}
     button:disabled {{
       cursor: not-allowed;
       opacity: 0.42;
+    }}
+    .scoreboard {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }}
+    .score {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }}
+    .score .value {{
+      display: block;
+      font-size: 26px;
+      font-weight: 700;
+    }}
+    .score .label {{
+      color: var(--muted);
+      font-size: 14px;
     }}
     .status {{
       min-height: 24px;
@@ -1206,6 +1247,41 @@ def plot_unknown_classification_game_html(
       min-height: 340px;
       padding: 10px;
     }}
+    .guess-panel {{
+      min-height: 126px;
+      padding: 16px;
+    }}
+    .sample-panel {{
+      min-height: 0;
+      padding: 16px;
+    }}
+    .sample-list {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }}
+    button.sample-choice {{
+      min-height: 44px;
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    button.sample-choice.selected {{
+      background: #111111;
+      border-color: #111111;
+      color: white;
+    }}
+    .guess-buttons {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+    }}
+    .hint {{
+      margin: 0;
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 16px;
+    }}
     .plot {{
       width: 100%;
       height: 330px;
@@ -1215,9 +1291,16 @@ def plot_unknown_classification_game_html(
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 12px;
     }}
-    #featurePlot2d,
     #featurePlot3d {{
       height: 520px;
+    }}
+    #selectedCurvePlot {{
+      height: 470px;
+    }}
+    .curve-note {{
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 15px;
     }}
     .prediction {{
       display: grid;
@@ -1230,48 +1313,127 @@ def plot_unknown_classification_game_html(
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 18px;
-      font-size: 20px;
+      font-size: 18px;
     }}
-    .answer strong {{
+    .answer-row {{
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eeeeee;
+    }}
+    .answer-row:last-child {{
+      border-bottom: 0;
+    }}
+    .answer strong,
+    .answer .placeholder {{
       display: block;
-      margin-top: 10px;
-      font-size: 32px;
+      font-size: 24px;
+      line-height: 1.1;
+    }}
+    .placeholder {{
+      color: var(--muted);
+    }}
+    .result-message {{
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #eeeeee;
+      font-size: 16px;
+      color: var(--muted);
     }}
     .hidden {{
       display: none;
+    }}
+    @media (max-width: 900px) {{
+      .grid,
+      .feature-grid,
+      .prediction,
+      .scoreboard {{
+        grid-template-columns: 1fr;
+      }}
     }}
   </style>
 </head>
 <body>
   <main>
     <h1>8. Unknown Sample Classification Game</h1>
-    <div class="controls">
-      <button id="loadRaw" class="primary">Load Unknown Sample</button>
-      <button id="processSample" disabled>Process Sample</button>
-      <button id="classifySample" disabled>Classify</button>
-      <button id="revealTruth" disabled>Reveal True Label</button>
-      <button id="resetGame">Reset</button>
+    <div class="scoreboard">
+      <div class="score">
+        <span id="roundCount" class="value">0</span>
+        <span class="label">samples revealed</span>
+      </div>
+      <div class="score">
+        <span id="studentScore" class="value">0</span>
+        <span class="label">student correct</span>
+      </div>
+      <div class="score">
+        <span id="classifierScore" class="value">0</span>
+        <span class="label">computer correct</span>
+      </div>
     </div>
-    <p id="status" class="status">Imagine we do not know what this sample is.</p>
+    <p id="status" class="status">Choose a mystery sample from the list.</p>
+    <div id="guessPanel" class="panel guess-panel">
+      <h2>What do you think it is?</h2>
+      <div id="guessButtons" class="guess-buttons"></div>
+      <p id="guessStatus" class="hint">Choose a mystery sample first.</p>
+    </div>
+    <div class="controls">
+      <button id="processSample" disabled>Process Sample</button>
+      <button id="transformSample" disabled>Transform Sample</button>
+      <button id="classifySample" disabled>Ask Classifier</button>
+      <button id="revealTruth" disabled>Reveal True Label</button>
+      <button id="tryAnother" disabled>Choose Another Sample</button>
+      <button id="resetScore">Reset Score</button>
+    </div>
 
     <section class="grid">
+      <div id="samplePanel" class="panel sample-panel">
+        <h2>Choose a mystery sample</h2>
+        <div id="sampleList" class="sample-list"></div>
+      </div>
       <div id="rawPanel" class="panel hidden">
         <div id="rawPlot" class="plot"></div>
       </div>
       <div id="processedPanel" class="panel hidden">
         <div id="processedPlot" class="plot"></div>
       </div>
-      <div id="featurePanel" class="panel wide hidden">
+      <div id="patternPanel" class="panel hidden">
+        <div id="patternPlot" class="plot"></div>
+      </div>
+      <div id="featurePanel" class="wide hidden">
         <div class="feature-grid">
-          <div id="featurePlot2d" class="plot"></div>
-          <div id="featurePlot3d" class="plot"></div>
+          <div class="panel">
+            <div id="featurePlot3d" class="plot"></div>
+          </div>
+          <div id="selectedCurvePanel" class="panel">
+            <p id="selectedCurveNote" class="curve-note">Click a highlighted map point to inspect its signal curve.</p>
+            <div id="selectedCurvePlot" class="plot"></div>
+          </div>
         </div>
       </div>
       <div id="predictionPanel" class="prediction wide hidden">
         <div class="answer">
-          Prediction
-          <strong id="predictionText"></strong>
-          <div id="truthText" class="hidden"></div>
+          <div class="answer-row">
+            <span>Raw signal guess</span>
+            <strong id="rawGuessText" class="placeholder">?</strong>
+          </div>
+          <div class="answer-row">
+            <span>After cleaning guess</span>
+            <strong id="cleanGuessText" class="placeholder">?</strong>
+          </div>
+          <div class="answer-row">
+            <span>After map guess</span>
+            <strong id="mapGuessText" class="placeholder">?</strong>
+          </div>
+          <div class="answer-row">
+            <span>Computer says</span>
+            <strong id="predictionText" class="placeholder">?</strong>
+          </div>
+          <div class="answer-row">
+            <span>True label</span>
+            <strong id="truthText" class="placeholder">?</strong>
+          </div>
+          <div id="resultMessage" class="result-message">Reveal the true label to update the score.</div>
         </div>
         <div class="panel">
           <div id="confidencePlot" class="plot"></div>
@@ -1282,15 +1444,40 @@ def plot_unknown_classification_game_html(
 
   <script>
     const data = {json.dumps(payload)};
+    const samplePanel = document.getElementById("samplePanel");
+    const sampleList = document.getElementById("sampleList");
     const rawPanel = document.getElementById("rawPanel");
+    const guessPanel = document.getElementById("guessPanel");
+    const guessButtons = document.getElementById("guessButtons");
+    const guessStatus = document.getElementById("guessStatus");
     const processedPanel = document.getElementById("processedPanel");
+    const patternPanel = document.getElementById("patternPanel");
     const featurePanel = document.getElementById("featurePanel");
+    const selectedCurvePanel = document.getElementById("selectedCurvePanel");
+    const selectedCurveNote = document.getElementById("selectedCurveNote");
     const predictionPanel = document.getElementById("predictionPanel");
     const statusEl = document.getElementById("status");
+    const rawGuessText = document.getElementById("rawGuessText");
+    const cleanGuessText = document.getElementById("cleanGuessText");
+    const mapGuessText = document.getElementById("mapGuessText");
     const predictionText = document.getElementById("predictionText");
     const truthText = document.getElementById("truthText");
+    const resultMessage = document.getElementById("resultMessage");
+    const roundCount = document.getElementById("roundCount");
+    const studentScore = document.getElementById("studentScore");
+    const classifierScore = document.getElementById("classifierScore");
     let activeSample = null;
-    let previousSampleId = null;
+    let guessStage = null;
+    let rawGuess = null;
+    let cleanGuess = null;
+    let mapGuess = null;
+    let rounds = 0;
+    let studentCorrect = 0;
+    let classifierCorrect = 0;
+    let roundFinished = false;
+    const referenceSampleById = Object.fromEntries(
+      data.referenceSamples.map(sample => [sample.id, sample])
+    );
 
     function signalLayout(title, xTitle, yTitle) {{
       return {{
@@ -1302,12 +1489,12 @@ def plot_unknown_classification_game_html(
       }};
     }}
 
-    function featureLayout() {{
+    function patternLayout() {{
       return {{
-        title: "2D CNN-learned feature map",
-        xaxis: {{ title: "PCA feature 1" }},
-        yaxis: {{ title: "PCA feature 2" }},
-        margin: {{ l: 64, r: 18, b: 55, t: 50 }},
+        title: "Compare with known clean patterns",
+        xaxis: {{ title: "Processed measurement point" }},
+        yaxis: {{ title: "Processed response" }},
+        margin: {{ l: 64, r: 18, b: 55, t: 48 }},
         template: "plotly_white",
         legend: {{ orientation: "v" }},
       }};
@@ -1315,11 +1502,11 @@ def plot_unknown_classification_game_html(
 
     function feature3dLayout() {{
       return {{
-        title: "3D CNN-learned feature map",
+        title: "3D Signal Similarity Map",
         scene: {{
-          xaxis: {{ title: "PCA feature 1" }},
-          yaxis: {{ title: "PCA feature 2" }},
-          zaxis: {{ title: "PCA feature 3" }},
+          xaxis: {{ title: "Feature 1" }},
+          yaxis: {{ title: "Feature 2" }},
+          zaxis: {{ title: "Feature 3" }},
         }},
         margin: {{ l: 0, r: 0, b: 0, t: 50 }},
         template: "plotly_white",
@@ -1337,34 +1524,142 @@ def plot_unknown_classification_game_html(
       }};
     }}
 
-    function chooseUnknownSample() {{
-      let candidates = data.unknownSamples;
-      if (candidates.length > 1 && previousSampleId !== null) {{
-        candidates = candidates.filter(sample => sample.id !== previousSampleId);
+    function hexToRgba(hex, alpha) {{
+      const value = hex.replace("#", "");
+      const r = parseInt(value.slice(0, 2), 16);
+      const g = parseInt(value.slice(2, 4), 16);
+      const b = parseInt(value.slice(4, 6), 16);
+      return `rgba(${{r}}, ${{g}}, ${{b}}, ${{alpha}})`;
+    }}
+
+    function classPatternTraces(sample) {{
+      const traces = [];
+      data.classPatterns.forEach(pattern => {{
+        traces.push({{
+          type: "scatter",
+          mode: "lines",
+          name: `${{pattern.label}} usual range`,
+          x: [...pattern.x, ...pattern.x.slice().reverse()],
+          y: [...pattern.upper, ...pattern.lower.slice().reverse()],
+          fill: "toself",
+          fillcolor: hexToRgba(pattern.color, 0.14),
+          line: {{ color: "rgba(0, 0, 0, 0)", width: 0 }},
+          hoverinfo: "skip",
+          showlegend: false,
+        }});
+        traces.push({{
+          type: "scatter",
+          mode: "lines",
+          name: `${{pattern.label}} known pattern`,
+          x: pattern.x,
+          y: pattern.mean,
+          line: {{ color: pattern.color, width: 2.2 }},
+        }});
+      }});
+      traces.push({{
+        type: "scatter",
+        mode: "lines",
+        name: "mystery sample",
+        x: sample.processedSignal.map((_, idx) => idx),
+        y: sample.processedSignal,
+        line: {{ color: "#111111", width: 3.0 }},
+      }});
+      return traces;
+    }}
+
+    function reference3dTraces() {{
+      return data.classOrder.map(label => {{
+        const samples = data.referenceSamples.filter(sample => sample.label === label);
+        return {{
+          type: "scatter3d",
+          mode: "markers",
+          name: `${{label}} clickable examples`,
+          x: samples.map(sample => sample.mapPoint3d[0]),
+          y: samples.map(sample => sample.mapPoint3d[1]),
+          z: samples.map(sample => sample.mapPoint3d[2]),
+          customdata: samples.map(sample => sample.id),
+          text: samples.map(sample => sample.displayName),
+          hovertemplate: "%{{text}}<extra></extra>",
+          marker: {{
+            color: samples.map(sample => sample.color),
+            size: 8,
+            symbol: "square-open",
+            line: {{ width: 5 }},
+          }},
+        }};
+      }});
+    }}
+
+    function updateScoreboard() {{
+      roundCount.textContent = String(rounds);
+      studentScore.textContent = String(studentCorrect);
+      classifierScore.textContent = String(classifierCorrect);
+    }}
+
+    function setButtonEnabled(id, enabled) {{
+      document.getElementById(id).disabled = !enabled;
+    }}
+
+    function initializeGuessButtons() {{
+      guessButtons.innerHTML = "";
+      data.classOrder.forEach(label => {{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "choice";
+        button.textContent = label;
+        button.disabled = true;
+        button.addEventListener("click", () => makeGuess(label));
+        guessButtons.appendChild(button);
+      }});
+    }}
+
+    function shuffledIndices(count) {{
+      const indices = Array.from({{ length: count }}, (_, index) => index);
+      for (let index = indices.length - 1; index > 0; index -= 1) {{
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [indices[index], indices[swapIndex]] = [indices[swapIndex], indices[index]];
       }}
-      activeSample = candidates[Math.floor(Math.random() * candidates.length)];
-      previousSampleId = activeSample.id;
-      return activeSample;
+      return indices;
+    }}
+
+    function initializeSampleButtons() {{
+      sampleList.innerHTML = "";
+      shuffledIndices(data.unknownSamples.length).forEach((sampleIndex, displayIndex) => {{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sample-choice";
+        button.textContent = `Mystery Sample ${{displayIndex + 1}}`;
+        button.addEventListener("click", () => selectUnknownSample(sampleIndex, button));
+        sampleList.appendChild(button);
+      }});
+    }}
+
+    function setSampleButtonsEnabled(enabled) {{
+      document.querySelectorAll(".sample-choice").forEach(button => {{
+        button.disabled = !enabled;
+      }});
+    }}
+
+    function clearSampleSelection() {{
+      document.querySelectorAll(".sample-choice").forEach(button => {{
+        button.classList.remove("selected");
+      }});
+    }}
+
+    function setGuessButtonsEnabled(enabled) {{
+      document.querySelectorAll(".choice").forEach(button => {{
+        button.disabled = !enabled;
+      }});
+    }}
+
+    function clearGuessSelection() {{
+      document.querySelectorAll(".choice").forEach(button => {{
+        button.classList.remove("selected");
+      }});
     }}
 
     function cloneTraces(traces) {{
       return traces.map(trace => JSON.parse(JSON.stringify(trace)));
-    }}
-
-    function unknown2dTrace(sample) {{
-      return {{
-        type: "scatter",
-        mode: "markers",
-        name: "unknown sample",
-        x: [sample.mapPoint[0]],
-        y: [sample.mapPoint[1]],
-        marker: {{
-          color: "#111111",
-          size: 18,
-          symbol: "star",
-          line: {{ color: "white", width: 1.2 }},
-        }},
-      }};
     }}
 
     function unknown3dTrace(sample) {{
@@ -1375,24 +1670,120 @@ def plot_unknown_classification_game_html(
         x: [sample.mapPoint3d[0]],
         y: [sample.mapPoint3d[1]],
         z: [sample.mapPoint3d[2]],
+        customdata: ["mystery"],
+        text: ["Mystery sample"],
+        hovertemplate: "%{{text}}<extra></extra>",
         marker: {{
           color: "#111111",
           opacity: 1.0,
-          size: 9,
+          size: 12,
           symbol: "diamond",
         }},
       }};
     }}
 
-    function loadRaw() {{
-      const sample = chooseUnknownSample();
-      rawPanel.classList.remove("hidden");
+    function selectedCurveLayout(title) {{
+      return {{
+        title,
+        xaxis: {{ title: "Processed measurement point" }},
+        yaxis: {{ title: "Processed response" }},
+        margin: {{ l: 64, r: 18, b: 55, t: 48 }},
+        template: "plotly_white",
+      }};
+    }}
+
+    function selectedCurveTrace(sample, color, name) {{
+      return {{
+        type: "scatter",
+        mode: "lines",
+        x: sample.processedSignal.map((_, idx) => idx),
+        y: sample.processedSignal,
+        name,
+        line: {{ color, width: 2.6 }},
+      }};
+    }}
+
+    function showSelectedCurve(sample, title, color, name) {{
+      selectedCurvePanel.classList.remove("hidden");
+      selectedCurveNote.textContent = title;
+      Plotly.newPlot(
+        "selectedCurvePlot",
+        [selectedCurveTrace(sample, color, name)],
+        selectedCurveLayout(title),
+        {{ responsive: true, displaylogo: false }}
+      );
+    }}
+
+    function handleFeatureClick(event) {{
+      if (!event.points || event.points.length === 0) return;
+      const clickedId = event.points[0].customdata;
+      if (!clickedId) return;
+      if (clickedId === "mystery") {{
+        showSelectedCurve(activeSample, "Clicked curve: mystery sample", "#111111", "mystery sample");
+        return;
+      }}
+      const referenceSample = referenceSampleById[clickedId];
+      if (!referenceSample) return;
+      showSelectedCurve(
+        referenceSample,
+        `Clicked curve: ${{referenceSample.displayName}}`,
+        referenceSample.color,
+        referenceSample.displayName
+      );
+    }}
+
+    function attachFeatureClickHandlers() {{
+      const plot3d = document.getElementById("featurePlot3d");
+      if (plot3d.removeAllListeners) plot3d.removeAllListeners("plotly_click");
+      plot3d.on("plotly_click", handleFeatureClick);
+    }}
+
+    function resetRoundDisplay() {{
       processedPanel.classList.add("hidden");
+      patternPanel.classList.add("hidden");
       featurePanel.classList.add("hidden");
+      selectedCurvePanel.classList.add("hidden");
       predictionPanel.classList.add("hidden");
-      predictionText.textContent = "";
-      truthText.textContent = "";
-      truthText.classList.add("hidden");
+      selectedCurveNote.textContent = "Click a highlighted map point to inspect its signal curve.";
+      if (document.getElementById("selectedCurvePlot").data) {{
+        Plotly.purge("selectedCurvePlot");
+      }}
+      guessStage = null;
+      rawGuess = null;
+      cleanGuess = null;
+      mapGuess = null;
+      roundFinished = false;
+      clearGuessSelection();
+      setGuessButtonsEnabled(false);
+      guessStatus.textContent = "Choose a mystery sample first.";
+      rawGuessText.textContent = "?";
+      rawGuessText.classList.add("placeholder");
+      cleanGuessText.textContent = "?";
+      cleanGuessText.classList.add("placeholder");
+      mapGuessText.textContent = "?";
+      mapGuessText.classList.add("placeholder");
+      predictionText.textContent = "?";
+      predictionText.classList.add("placeholder");
+      truthText.textContent = "?";
+      truthText.classList.add("placeholder");
+      resultMessage.textContent = "Reveal the true label to update the score.";
+      setButtonEnabled("processSample", false);
+      setButtonEnabled("transformSample", false);
+      setButtonEnabled("classifySample", false);
+      setButtonEnabled("revealTruth", false);
+      setButtonEnabled("tryAnother", false);
+    }}
+
+    function selectUnknownSample(sampleIndex, button) {{
+      const sample = data.unknownSamples[sampleIndex];
+      activeSample = sample;
+      resetRoundDisplay();
+      clearSampleSelection();
+      button.classList.add("selected");
+      setSampleButtonsEnabled(false);
+      rawPanel.classList.remove("hidden");
+      guessStage = "raw";
+      setGuessButtonsEnabled(true);
       Plotly.newPlot("rawPlot", [{{
         type: "scatter",
         mode: "lines",
@@ -1401,16 +1792,50 @@ def plot_unknown_classification_game_html(
         line: {{ color: "#111111", width: 1.4 }},
         name: "unknown raw signal",
       }}], signalLayout("Unknown sample: raw measurement", "Measurement point", "Sensor response"), {{ responsive: true, displaylogo: false }});
-      statusEl.textContent = "The raw signal is visible, but the class label is hidden.";
-      document.getElementById("processSample").disabled = false;
-      document.getElementById("classifySample").disabled = true;
-      document.getElementById("revealTruth").disabled = true;
+      guessStatus.textContent = "Make your guess from the raw signal.";
+      statusEl.textContent = "The class label is hidden. Choose LOW, TARGET, or HIGH before processing.";
+    }}
+
+    function makeGuess(label) {{
+      if (!activeSample || !guessStage || roundFinished) return;
+      clearGuessSelection();
+      const selectedButton = [...document.querySelectorAll(".choice")].find(button => button.textContent === label);
+      if (selectedButton) selectedButton.classList.add("selected");
+      if (guessStage === "raw") {{
+        rawGuess = label;
+        rawGuessText.textContent = label;
+        rawGuessText.classList.remove("placeholder");
+        guessStatus.textContent = `Raw signal guess: ${{label}}`;
+        statusEl.textContent = "Now clean the signal and compare it with known patterns.";
+        setButtonEnabled("processSample", true);
+      }} else if (guessStage === "clean") {{
+        cleanGuess = label;
+        cleanGuessText.textContent = label;
+        cleanGuessText.classList.remove("placeholder");
+        guessStatus.textContent = `After cleaning guess: ${{label}}`;
+        statusEl.textContent = "Now transform the signal into a map point.";
+        setButtonEnabled("transformSample", true);
+      }} else if (guessStage === "map") {{
+        mapGuess = label;
+        mapGuessText.textContent = label;
+        mapGuessText.classList.remove("placeholder");
+        guessStatus.textContent = `After map guess: ${{label}}`;
+        statusEl.textContent = "Now ask the computer to classify the same sample.";
+        setButtonEnabled("classifySample", true);
+      }}
     }}
 
     function processSample() {{
-      if (!activeSample) return;
+      if (!activeSample || !rawGuess) return;
       processedPanel.classList.remove("hidden");
-      featurePanel.classList.remove("hidden");
+      patternPanel.classList.remove("hidden");
+      featurePanel.classList.add("hidden");
+      predictionPanel.classList.add("hidden");
+      predictionText.textContent = "?";
+      predictionText.classList.add("placeholder");
+      truthText.textContent = "?";
+      truthText.classList.add("placeholder");
+      resultMessage.textContent = "Reveal the true label to update the score.";
       Plotly.newPlot("processedPlot", [{{
         type: "scatter",
         mode: "lines",
@@ -1419,27 +1844,51 @@ def plot_unknown_classification_game_html(
         line: {{ color: "#2F80ED", width: 2.0 }},
         name: "processed signal",
       }}], signalLayout("Same sample after processing", "Processed measurement point", "Processed response"), {{ responsive: true, displaylogo: false }});
-      Plotly.newPlot(
-        "featurePlot2d",
-        [...cloneTraces(data.featureTracesBase), unknown2dTrace(activeSample)],
-        featureLayout(),
-        {{ responsive: true, displaylogo: false }}
-      );
+      Plotly.newPlot("patternPlot", classPatternTraces(activeSample), patternLayout(), {{ responsive: true, displaylogo: false }});
+      guessStage = "clean";
+      clearGuessSelection();
+      setGuessButtonsEnabled(true);
+      guessStatus.textContent = "After seeing the cleaned signal and known patterns, choose again.";
+      statusEl.textContent = "The noisy signal has been cleaned. Compare it with the known pattern bands, then guess again.";
+      setButtonEnabled("processSample", false);
+      setButtonEnabled("transformSample", false);
+      setButtonEnabled("classifySample", false);
+      setButtonEnabled("revealTruth", false);
+    }}
+
+    function transformSample() {{
+      if (!activeSample || !cleanGuess) return;
+      featurePanel.classList.remove("hidden");
+      selectedCurvePanel.classList.remove("hidden");
+      selectedCurveNote.textContent = "Click an open square or the black mystery marker to inspect its cleaned curve.";
       Plotly.newPlot(
         "featurePlot3d",
-        [...cloneTraces(data.featureTraces3dBase), unknown3dTrace(activeSample)],
+        [
+          ...cloneTraces(data.featureTraces3dBase),
+          ...reference3dTraces(),
+          unknown3dTrace(activeSample),
+        ],
         feature3dLayout(),
         {{ responsive: true, displaylogo: false }}
       );
-      statusEl.textContent = "After processing, the unknown sample appears in both the 2D and 3D feature maps.";
-      document.getElementById("classifySample").disabled = false;
+      attachFeatureClickHandlers();
+      guessStage = "map";
+      clearGuessSelection();
+      setGuessButtonsEnabled(true);
+      guessStatus.textContent = "After seeing the map position, make your final guess.";
+      statusEl.textContent = "Nearby points have similar signal shapes. Click highlighted points to inspect curves, then make your final guess.";
+      setButtonEnabled("transformSample", false);
+      setButtonEnabled("classifySample", false);
     }}
 
     function classifySample() {{
-      if (!activeSample) return;
+      if (!activeSample || !mapGuess || roundFinished) return;
       predictionPanel.classList.remove("hidden");
       predictionText.textContent = activeSample.predictedLabel;
-      truthText.classList.add("hidden");
+      predictionText.classList.remove("placeholder");
+      truthText.textContent = "?";
+      truthText.classList.add("placeholder");
+      resultMessage.textContent = "The computer has guessed. Reveal the true label to finish this round.";
       Plotly.newPlot("confidencePlot", [{{
         type: "bar",
         x: data.classOrder,
@@ -1448,39 +1897,60 @@ def plot_unknown_classification_game_html(
         text: activeSample.probabilities.map(value => `${{(100 * value).toFixed(1)}}%`),
         textposition: "outside",
       }}], confidenceLayout(), {{ responsive: true, displaylogo: false }});
-      statusEl.textContent = "The classifier has made a prediction. Now reveal the answer.";
-      document.getElementById("revealTruth").disabled = false;
+      statusEl.textContent = "The computer has made a prediction. Now reveal the answer.";
+      guessStage = null;
+      setGuessButtonsEnabled(false);
+      setButtonEnabled("processSample", false);
+      setButtonEnabled("transformSample", false);
+      setButtonEnabled("revealTruth", true);
     }}
 
     function revealTruth() {{
-      if (!activeSample) return;
-      truthText.textContent = `True label: ${{activeSample.trueLabel}}`;
-      truthText.classList.remove("hidden");
-      statusEl.textContent = activeSample.predictedLabel === activeSample.trueLabel
-        ? "The prediction matches the true label."
-        : "The prediction does not match the true label.";
+      if (!activeSample || roundFinished) return;
+      const studentWasCorrect = mapGuess === activeSample.trueLabel;
+      const classifierWasCorrect = activeSample.predictedLabel === activeSample.trueLabel;
+      roundFinished = true;
+      rounds += 1;
+      if (studentWasCorrect) studentCorrect += 1;
+      if (classifierWasCorrect) classifierCorrect += 1;
+      updateScoreboard();
+      truthText.textContent = activeSample.trueLabel;
+      truthText.classList.remove("placeholder");
+      const changedGuess = rawGuess !== mapGuess || cleanGuess !== mapGuess;
+      resultMessage.textContent = `Final student guess: ${{mapGuess}}. You were ${{studentWasCorrect ? "correct" : "not correct"}}. The computer was ${{classifierWasCorrect ? "correct" : "not correct"}}.${{changedGuess ? " Your guess changed as the evidence changed." : ""}}`;
+      statusEl.textContent = "Round complete. Try another mystery sample.";
+      setButtonEnabled("revealTruth", false);
+      setButtonEnabled("classifySample", false);
+      setButtonEnabled("tryAnother", true);
+      setGuessButtonsEnabled(false);
     }}
 
     function resetGame() {{
       rawPanel.classList.add("hidden");
-      processedPanel.classList.add("hidden");
-      featurePanel.classList.add("hidden");
-      predictionPanel.classList.add("hidden");
-      predictionText.textContent = "";
-      truthText.textContent = "";
-      truthText.classList.add("hidden");
       activeSample = null;
-      statusEl.textContent = "Imagine we do not know what this sample is.";
-      document.getElementById("processSample").disabled = true;
-      document.getElementById("classifySample").disabled = true;
-      document.getElementById("revealTruth").disabled = true;
+      resetRoundDisplay();
+      clearSampleSelection();
+      setSampleButtonsEnabled(true);
+      statusEl.textContent = "Choose a mystery sample from the list.";
     }}
 
-    document.getElementById("loadRaw").addEventListener("click", loadRaw);
+    function resetScore() {{
+      rounds = 0;
+      studentCorrect = 0;
+      classifierCorrect = 0;
+      updateScoreboard();
+      resetGame();
+    }}
+
+    initializeSampleButtons();
+    initializeGuessButtons();
+    updateScoreboard();
     document.getElementById("processSample").addEventListener("click", processSample);
+    document.getElementById("transformSample").addEventListener("click", transformSample);
     document.getElementById("classifySample").addEventListener("click", classifySample);
     document.getElementById("revealTruth").addEventListener("click", revealTruth);
-    document.getElementById("resetGame").addEventListener("click", resetGame);
+    document.getElementById("tryAnother").addEventListener("click", resetGame);
+    document.getElementById("resetScore").addEventListener("click", resetScore);
   </script>
 </body>
 </html>
@@ -1488,6 +1958,68 @@ def plot_unknown_classification_game_html(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
     return output_path
+
+
+def _build_class_pattern_payloads(
+    processed_by_class: dict[str, pd.DataFrame],
+    class_order: Sequence[str],
+) -> list[dict[str, object]]:
+    patterns = []
+    for label in class_order:
+        values = processed_by_class[label].to_numpy(dtype=np.float32, copy=False)
+        if values.size == 0:
+            continue
+        patterns.append(
+            {
+                "label": str(label),
+                "color": CLASS_COLORS.get(str(label), "#777777"),
+                "x": list(range(values.shape[1])),
+                "mean": _to_float_list(np.mean(values, axis=0)),
+                "lower": _to_float_list(np.percentile(values, 10, axis=0)),
+                "upper": _to_float_list(np.percentile(values, 90, axis=0)),
+            }
+        )
+    return patterns
+
+
+def _build_clickable_reference_payloads(
+    processed_by_class: dict[str, pd.DataFrame],
+    result: DemoClassificationResult,
+    max_per_class: int,
+) -> list[dict[str, object]]:
+    references: list[dict[str, object]] = []
+
+    for label in result.class_order:
+        class_positions = np.flatnonzero(result.y_train == label)
+        if len(class_positions) == 0:
+            continue
+
+        if len(class_positions) <= max_per_class:
+            selected_positions = class_positions
+        else:
+            selected_offsets = np.linspace(0, len(class_positions) - 1, max_per_class, dtype=int)
+            selected_positions = class_positions[selected_offsets]
+
+        for local_count, train_position in enumerate(selected_positions, start=1):
+            global_index = int(result.train_indices[int(train_position)])
+            ref_label, ref_sample_idx, processed_signal = _global_signal_info_by_index(
+                data_by_class=processed_by_class,
+                class_order=result.class_order,
+                global_index=global_index,
+            )
+            references.append(
+                {
+                    "id": f"known-{ref_label}-{ref_sample_idx}",
+                    "displayName": f"Known {ref_label} example {local_count}",
+                    "label": ref_label,
+                    "color": CLASS_COLORS.get(ref_label, "#777777"),
+                    "processedSignal": _to_float_list(processed_signal),
+                    "mapPoint": _to_float_list(result.x_train_map[int(train_position)]),
+                    "mapPoint3d": _to_float_list(result.x_train_map_3d[int(train_position)]),
+                }
+            )
+
+    return references
 
 
 def _build_unknown_candidate_payloads(

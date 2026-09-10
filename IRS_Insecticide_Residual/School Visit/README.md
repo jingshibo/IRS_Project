@@ -14,7 +14,7 @@ load insecticide residual data
 -> compare processed class averages before and after slicing
 -> show PCA feature maps before and after CNN feature learning
 -> compare Original and CNN classification results
--> classify a randomly selected unknown example
+-> classify a student-selected unknown example
 ```
 
 The main script is:
@@ -67,8 +67,16 @@ Figure `07` reports row-normalized recall percentages in the confusion
 matrices. The label `Original` refers to the manually designed feature
 classifier. The label `CNN` refers to the learned signal-feature classifier.
 
-The interactive unknown-sample game embeds a small balanced pool of unknown
-holdout samples. Each time `Load Unknown Sample` is clicked, the page randomly
-selects a candidate, displays its raw signal, then shows the processed signal,
-2D and 3D CNN feature-map positions, class confidence, and finally the true
-label.
+The interactive unknown-sample game embeds a balanced pool of 12 unknown
+holdout samples, with 4 samples from each class. Students choose an anonymous
+item from the mystery sample list, then guess LOW, TARGET, or HIGH from the raw
+signal. `Process Sample` shows the cleaned signal and a known-pattern
+comparison, using class average curves and usual-range bands. Students can then
+guess again from the cleaner evidence. `Transform Sample` changes the signal
+into a 3D signal similarity map, and students make a final guess from the
+clustered map position. A selected set of 90 known map points is clickable; when
+students click one of these points, the corresponding cleaned signal curve is
+shown beside the map. The mystery sample marker is clickable too. After that,
+students can ask the classifier, see confidence for each class, and finally
+reveal the true label. The page keeps a simple student-versus-computer score
+across rounds.
