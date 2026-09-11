@@ -1135,7 +1135,7 @@ def plot_unknown_classification_game_html(
     simple_feature_result: DemoClassificationResult | None = None,
     complex_feature_result: DemoClassificationResult | None = None,
     pca_result: DemoClassificationResult | None = None,
-    max_unknown_candidates_per_class: int = 4,
+    max_unknown_candidates_total: int = 18,
     max_clickable_references_per_class: int = 50,
 ) -> Path:
     from plotly.offline import get_plotlyjs
@@ -1156,7 +1156,7 @@ def plot_unknown_classification_game_html(
         raw_by_class=raw_by_class,
         processed_by_class=processed_by_class,
         result=result,
-        max_per_class=max_unknown_candidates_per_class,
+        max_total=max_unknown_candidates_total,
         transform_map_lookup_by_method=transform_map_lookup_by_method,
         prediction_lookup_by_method=prediction_lookup_by_method,
     )
@@ -1314,10 +1314,14 @@ def plot_unknown_classification_game_html(
       min-height: 340px;
       padding: 16px;
     }}
-    .sample-list {{
+    .sample-picker-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
+      margin-top: 2px;
+    }}
+    .sample-list {{
+      display: contents;
     }}
     .sample-panel .panel-action {{
       margin-top: auto;
@@ -1330,6 +1334,12 @@ def plot_unknown_classification_game_html(
       margin-top: 10px;
     }}
     button.sample-choice {{
+      min-height: 44px;
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    button.sample-reset {{
+      grid-column: 4;
       min-height: 44px;
       font-size: 15px;
       font-weight: 700;
@@ -1459,6 +1469,12 @@ def plot_unknown_classification_game_html(
         position: static;
         box-shadow: none;
       }}
+      .sample-picker-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      button.sample-reset {{
+        grid-column: 2;
+      }}
     }}
   </style>
 </head>
@@ -1492,9 +1508,9 @@ def plot_unknown_classification_game_html(
     <section class="grid">
       <div id="samplePanel" class="panel sample-panel">
         <h2>Choose a mystery sample</h2>
-        <div id="sampleList" class="sample-list"></div>
-        <div class="panel-action">
-          <button id="tryAnother">Choose Another Sample</button>
+        <div class="sample-picker-grid">
+          <div id="sampleList" class="sample-list"></div>
+          <button id="tryAnother" class="sample-reset">Choose Another Sample</button>
         </div>
       </div>
       <div id="rawPanel" class="panel hidden">
@@ -1801,11 +1817,13 @@ def plot_unknown_classification_game_html(
 
     function initializeSampleButtons() {{
       sampleList.innerHTML = "";
+      document.getElementById("tryAnother").style.order = String(data.unknownSamples.length + 1);
       shuffledIndices(data.unknownSamples.length).forEach((sampleIndex, displayIndex) => {{
         const button = document.createElement("button");
         button.type = "button";
         button.className = "sample-choice";
         button.textContent = `Mystery Sample ${{displayIndex + 1}}`;
+        button.style.order = String(displayIndex + 1);
         button.addEventListener("click", () => selectUnknownSample(sampleIndex, button));
         sampleList.appendChild(button);
       }});
@@ -2521,22 +2539,37 @@ def _build_unknown_candidate_payloads(
     raw_by_class: dict[str, pd.DataFrame],
     processed_by_class: dict[str, pd.DataFrame],
     result: DemoClassificationResult,
-    max_per_class: int,
+    max_total: int,
     transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
     prediction_lookup_by_method: dict[str, dict[int, dict[str, object]]],
 ) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
+    class_quotas = _balanced_class_quotas(
+        y_test=result.y_test,
+        class_order=result.class_order,
+        max_total=max_total,
+    )
+    train_centroids_by_method = _build_train_centroids_by_method(
+        result=result,
+        transform_map_lookup_by_method=transform_map_lookup_by_method,
+    )
 
     for label in result.class_order:
         class_positions = np.flatnonzero(result.y_test == label)
         if len(class_positions) == 0:
             continue
 
-        confidence = result.y_prob[class_positions].max(axis=1)
-        selected_positions = _select_mixed_confidence_positions(
+        teaching_scores = _score_unknown_teaching_positions(
             positions=class_positions,
-            confidence=confidence,
-            max_count=max_per_class,
+            result=result,
+            transform_map_lookup_by_method=transform_map_lookup_by_method,
+            prediction_lookup_by_method=prediction_lookup_by_method,
+            train_centroids_by_method=train_centroids_by_method,
+        )
+        selected_positions = _select_teaching_positions(
+            positions=class_positions,
+            scores=teaching_scores,
+            max_count=class_quotas.get(str(label), 0),
         )
         for test_position in selected_positions:
             global_index = int(result.test_indices[int(test_position)])
@@ -2574,40 +2607,154 @@ def _build_unknown_candidate_payloads(
     return candidates
 
 
-def _select_mixed_confidence_positions(
+def _balanced_class_quotas(
+    y_test: np.ndarray,
+    class_order: Sequence[str],
+    max_total: int,
+) -> dict[str, int]:
+    if max_total < 1:
+        raise ValueError("max_total must be at least 1")
+
+    available = {
+        str(label): int(np.count_nonzero(y_test == label))
+        for label in class_order
+    }
+    labels_with_data = [label for label in class_order if available[str(label)] > 0]
+    if not labels_with_data:
+        return {}
+
+    quotas = {str(label): 0 for label in class_order}
+    for label in labels_with_data:
+        quotas[str(label)] = min(max_total // len(labels_with_data), available[str(label)])
+
+    remaining = min(max_total, sum(available.values())) - sum(quotas.values())
+    label_cycle = sorted(
+        (str(label) for label in labels_with_data),
+        key=lambda label: available[label],
+        reverse=True,
+    )
+    while remaining > 0:
+        assigned_this_pass = False
+        for label in label_cycle:
+            if quotas[label] < available[label]:
+                quotas[label] += 1
+                remaining -= 1
+                assigned_this_pass = True
+                if remaining == 0:
+                    break
+        if not assigned_this_pass:
+            break
+
+    return quotas
+
+
+def _build_train_centroids_by_method(
+    result: DemoClassificationResult,
+    transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
+) -> dict[str, dict[str, np.ndarray]]:
+    centroids_by_method: dict[str, dict[str, np.ndarray]] = {}
+    for method_id, point_lookup in transform_map_lookup_by_method.items():
+        method_centroids: dict[str, np.ndarray] = {}
+        for label in result.class_order:
+            points = [
+                point_lookup[int(global_index)]
+                for train_position, global_index in enumerate(result.train_indices)
+                if result.y_train[int(train_position)] == label
+                and int(global_index) in point_lookup
+            ]
+            if points:
+                method_centroids[display_class_label(str(label))] = np.mean(
+                    np.asarray(points, dtype=np.float32),
+                    axis=0,
+                )
+        if method_centroids:
+            centroids_by_method[method_id] = method_centroids
+    return centroids_by_method
+
+
+def _score_unknown_teaching_positions(
     positions: np.ndarray,
-    confidence: np.ndarray,
+    result: DemoClassificationResult,
+    transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
+    prediction_lookup_by_method: dict[str, dict[int, dict[str, object]]],
+    train_centroids_by_method: dict[str, dict[str, np.ndarray]],
+) -> np.ndarray:
+    scores = []
+    weak_methods = ("pca", "simple")
+    strong_methods = ("complex", "cnn")
+    all_methods = ("pca", "simple", "complex", "cnn")
+
+    for test_position in positions:
+        global_index = int(result.test_indices[int(test_position)])
+        true_label = display_class_label(str(result.y_test[int(test_position)]))
+        predictions = {
+            method_id: lookup[global_index]["predictedLabel"]
+            for method_id, lookup in prediction_lookup_by_method.items()
+            if global_index in lookup
+        }
+        wrong_methods = [
+            method_id
+            for method_id in all_methods
+            if predictions.get(method_id) is not None
+            and predictions[method_id] != true_label
+        ]
+        weak_wrong = sum(method_id in wrong_methods for method_id in weak_methods)
+        strong_correct = sum(
+            predictions.get(method_id) == true_label
+            for method_id in strong_methods
+        )
+        disagreement = max(0, len(set(predictions.values())) - 1)
+
+        visual_wrong = 0
+        visual_weak_wrong = 0
+        for method_id in all_methods:
+            point = transform_map_lookup_by_method.get(method_id, {}).get(global_index)
+            centroids = train_centroids_by_method.get(method_id, {})
+            if point is None or not centroids:
+                continue
+            nearest_label = min(
+                centroids,
+                key=lambda label: float(np.linalg.norm(point - centroids[label])),
+            )
+            if nearest_label != true_label:
+                visual_wrong += 1
+                if method_id in weak_methods:
+                    visual_weak_wrong += 1
+
+        cnn_confidence = 1.0
+        cnn_prediction = prediction_lookup_by_method.get("cnn", {}).get(global_index)
+        if cnn_prediction is not None:
+            cnn_confidence = float(max(cnn_prediction["probabilities"]))
+
+        score = (
+            8.0 * weak_wrong
+            + 5.0 * len(wrong_methods)
+            + 4.0 * disagreement
+            + 3.0 * visual_weak_wrong
+            + 2.0 * visual_wrong
+            + 2.0 * weak_wrong * strong_correct
+            + (1.0 - cnn_confidence)
+        )
+        scores.append(score)
+
+    return np.asarray(scores, dtype=np.float32)
+
+
+def _select_teaching_positions(
+    positions: np.ndarray,
+    scores: np.ndarray,
     max_count: int,
 ) -> np.ndarray:
-    """Pick a mix of easy and harder holdout samples instead of only obvious ones."""
+    """Prefer mystery samples where feature views disagree or look visually ambiguous."""
     positions = np.asarray(positions)
-    confidence = np.asarray(confidence, dtype=np.float32)
+    scores = np.asarray(scores, dtype=np.float32)
+    if max_count <= 0:
+        return positions[:0]
     if len(positions) <= max_count:
         return positions
 
-    order = np.argsort(confidence)
-    ordered_positions = positions[order]
-    quantiles = np.linspace(0.25, 0.95, max_count)
-    candidate_indices = np.rint(quantiles * (len(ordered_positions) - 1)).astype(int)
-
-    selected_indices: list[int] = []
-    used: set[int] = set()
-    for candidate_index in candidate_indices:
-        candidate_index = int(np.clip(candidate_index, 0, len(ordered_positions) - 1))
-        if candidate_index in used:
-            for offset in range(1, len(ordered_positions)):
-                lower = candidate_index - offset
-                upper = candidate_index + offset
-                if lower >= 0 and lower not in used:
-                    candidate_index = lower
-                    break
-                if upper < len(ordered_positions) and upper not in used:
-                    candidate_index = upper
-                    break
-        used.add(candidate_index)
-        selected_indices.append(candidate_index)
-
-    return ordered_positions[np.asarray(selected_indices, dtype=int)]
+    order = np.lexsort((positions, -scores))
+    return positions[order[:max_count]]
 
 
 def _global_signal_by_index(

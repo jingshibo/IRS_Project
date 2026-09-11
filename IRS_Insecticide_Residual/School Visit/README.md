@@ -72,13 +72,15 @@ For the school-visit display, the original dataset labels are renamed:
 `HIGH` is shown as `Dirty Water`. This is only a display change; the underlying
 data loading and model training still use the original labels.
 
-The interactive unknown-sample game embeds a balanced pool of 12 mystery
-holdout samples, with 4 samples from each class and a mix of easier and harder
-examples. Students choose an anonymous item from the mystery sample list, then
-guess Purified Water, Tap Water, or Dirty Water from the raw signal. `Process
-Sample` shows the cleaned signal and a known-pattern comparison, using class
-average curves and usual-range bands. Students can then guess again from the
-cleaner evidence.
+The interactive unknown-sample game embeds a balanced pool of 18 mystery
+holdout samples. The mystery set is chosen for teaching value: it prefers
+examples where feature views disagree, where a weaker transformation makes a
+wrong prediction, or where the 3D point sits near the wrong class group.
+Students choose an anonymous item from the mystery sample list, then guess
+Purified Water, Tap Water, or Dirty Water from the raw signal. `Process Sample`
+shows the cleaned signal and a known-pattern comparison, using class average
+curves and usual-range bands. Students can then guess again from the cleaner
+evidence.
 `Transform Sample` lets students choose
 between four views of the same sample: `PCA Feature`, `Simple Feature`,
 `Complex Feature`, and `CNN Feature`. Each method button gives one intuitive
