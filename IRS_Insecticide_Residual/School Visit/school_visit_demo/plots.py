@@ -503,7 +503,7 @@ def plot_feature_map(
     if result.method_name.startswith("CNN"):
         ax.set_title("5. Feature Map of CNN-Learned Signal Features")
     else:
-        ax.set_title("5. Feature Map of Simple Signal Measurements")
+        ax.set_title("5. Feature Map of Manual Signal Measurements")
     ax.set_xlabel("PCA feature 1")
     ax.set_ylabel("PCA feature 2")
     ax.legend(loc="best", fontsize=8)
@@ -576,7 +576,7 @@ def plot_feature_map_3d(
     if result.method_name.startswith("CNN"):
         ax.set_title("6. 3D PCA Feature Map of CNN-Learned Signal Features")
     else:
-        ax.set_title("6. 3D PCA Feature Map of Simple Signal Measurements")
+        ax.set_title("6. 3D PCA Feature Map of Manual Signal Measurements")
     ax.set_xlabel("PCA feature 1")
     ax.set_ylabel("PCA feature 2")
     ax.set_zlabel("PCA feature 3")
@@ -690,7 +690,7 @@ def plot_feature_map_3d_interactive_html(
     title = (
         "6. Interactive 3D PCA Feature Map of CNN-Learned Signal Features"
         if result.method_name.startswith("CNN")
-        else "6. Interactive 3D PCA Feature Map of Simple Signal Measurements"
+        else "6. Interactive 3D PCA Feature Map of Manual Signal Measurements"
     )
     fig.update_layout(
         title=title,
@@ -1102,21 +1102,33 @@ def plot_unknown_classification_game_html(
     processed_by_class: dict[str, pd.DataFrame],
     result: DemoClassificationResult,
     output_path: Path,
+    no_transform_result: DemoClassificationResult | None = None,
+    simple_feature_result: DemoClassificationResult | None = None,
+    pca_result: DemoClassificationResult | None = None,
     max_unknown_candidates_per_class: int = 4,
-    max_clickable_references_per_class: int = 30,
+    max_clickable_references_per_class: int = 50,
 ) -> Path:
     from plotly.offline import get_plotlyjs
 
+    transform_methods, transform_map_lookup_by_method = _build_game_transform_method_payloads(
+        result=result,
+        no_transform_result=no_transform_result,
+        simple_feature_result=simple_feature_result,
+        pca_result=pca_result,
+    )
+    prediction_lookup_by_method = _build_game_prediction_lookup_by_method(
+        cnn_result=result,
+        no_transform_result=no_transform_result,
+        simple_feature_result=simple_feature_result,
+        pca_result=pca_result,
+    )
     unknown_samples = _build_unknown_candidate_payloads(
         raw_by_class=raw_by_class,
         processed_by_class=processed_by_class,
         result=result,
         max_per_class=max_unknown_candidates_per_class,
-    )
-    feature_traces_3d_base = _plotly_3d_feature_traces(
-        result=result,
-        include_unknown=False,
-        unknown_visible=False,
+        transform_map_lookup_by_method=transform_map_lookup_by_method,
+        prediction_lookup_by_method=prediction_lookup_by_method,
     )
     class_patterns = _build_class_pattern_payloads(
         processed_by_class=processed_by_class,
@@ -1126,13 +1138,14 @@ def plot_unknown_classification_game_html(
         processed_by_class=processed_by_class,
         result=result,
         max_per_class=max_clickable_references_per_class,
+        transform_map_lookup_by_method=transform_map_lookup_by_method,
     )
     payload = {
         "classOrder": list(result.class_order),
         "unknownSamples": unknown_samples,
         "classPatterns": class_patterns,
         "referenceSamples": reference_samples,
-        "featureTraces3dBase": feature_traces_3d_base,
+        "transformMethods": transform_methods,
     }
 
     html = f"""<!doctype html>
@@ -1171,11 +1184,15 @@ def plot_unknown_classification_game_html(
       margin: 0 0 10px;
       font-size: 19px;
     }}
-    .controls {{
+    .top-row {{
       display: flex;
-      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
       gap: 10px;
       margin-bottom: 16px;
+    }}
+    .top-row .status {{
+      flex: 1;
     }}
     button {{
       border: 1px solid var(--line);
@@ -1195,10 +1212,16 @@ def plot_unknown_classification_game_html(
       min-width: 104px;
       font-size: 18px;
       font-weight: 700;
+      background: var(--choice-bg, var(--panel));
+      border-color: var(--choice-color, var(--line));
+      color: var(--choice-color, var(--ink));
+    }}
+    button.choice:hover:not(:disabled) {{
+      background: var(--choice-hover-bg, var(--panel));
     }}
     button.choice.selected {{
-      background: #111111;
-      border-color: #111111;
+      background: var(--choice-color, #111111);
+      border-color: var(--choice-color, #111111);
       color: white;
     }}
     button:disabled {{
@@ -1228,7 +1251,7 @@ def plot_unknown_classification_game_html(
     }}
     .status {{
       min-height: 24px;
-      margin: 0 0 14px;
+      margin: 0;
       color: var(--muted);
       font-size: 16px;
     }}
@@ -1252,13 +1275,25 @@ def plot_unknown_classification_game_html(
       padding: 16px;
     }}
     .sample-panel {{
-      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 340px;
       padding: 16px;
     }}
     .sample-list {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 8px;
+    }}
+    .sample-panel .panel-action {{
+      margin-top: auto;
+      padding-top: 10px;
+    }}
+    .panel-action {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 10px;
     }}
     button.sample-choice {{
       min-height: 44px;
@@ -1275,6 +1310,32 @@ def plot_unknown_classification_game_html(
       flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 10px;
+    }}
+    .method-panel {{
+      min-height: 0;
+      margin-bottom: 12px;
+      padding: 14px;
+    }}
+    .method-buttons {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 8px;
+    }}
+    button.method-choice {{
+      min-width: 132px;
+      font-weight: 700;
+      background: var(--method-bg, var(--panel));
+      border-color: var(--method-color, var(--line));
+      color: var(--method-color, var(--ink));
+    }}
+    button.method-choice:hover:not(:disabled) {{
+      background: var(--method-hover-bg, var(--panel));
+    }}
+    button.method-choice.selected {{
+      background: var(--method-color, var(--blue));
+      border-color: var(--method-color, var(--blue));
+      color: white;
     }}
     .hint {{
       margin: 0;
@@ -1341,6 +1402,12 @@ def plot_unknown_classification_game_html(
       font-size: 16px;
       color: var(--muted);
     }}
+    .chart-note {{
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.4;
+    }}
     .hidden {{
       display: none;
     }}
@@ -1350,6 +1417,9 @@ def plot_unknown_classification_game_html(
       .prediction,
       .scoreboard {{
         grid-template-columns: 1fr;
+      }}
+      .top-row {{
+        flex-direction: column;
       }}
     }}
   </style>
@@ -1368,44 +1438,61 @@ def plot_unknown_classification_game_html(
       </div>
       <div class="score">
         <span id="classifierScore" class="value">0</span>
-        <span class="label">computer correct</span>
+        <span class="label">classifier correct</span>
       </div>
     </div>
-    <p id="status" class="status">Choose a mystery sample from the list.</p>
+    <div class="top-row">
+      <p id="status" class="status">Choose a mystery sample from the list.</p>
+      <button id="resetScore">Reset Score</button>
+    </div>
     <div id="guessPanel" class="panel guess-panel">
       <h2>What do you think it is?</h2>
       <div id="guessButtons" class="guess-buttons"></div>
       <p id="guessStatus" class="hint">Choose a mystery sample first.</p>
-    </div>
-    <div class="controls">
-      <button id="processSample" disabled>Process Sample</button>
-      <button id="transformSample" disabled>Transform Sample</button>
-      <button id="classifySample" disabled>Ask Classifier</button>
-      <button id="revealTruth" disabled>Reveal True Label</button>
-      <button id="tryAnother" disabled>Choose Another Sample</button>
-      <button id="resetScore">Reset Score</button>
     </div>
 
     <section class="grid">
       <div id="samplePanel" class="panel sample-panel">
         <h2>Choose a mystery sample</h2>
         <div id="sampleList" class="sample-list"></div>
+        <div class="panel-action">
+          <button id="tryAnother">Choose Another Sample</button>
+        </div>
       </div>
       <div id="rawPanel" class="panel hidden">
+        <h2>Raw Signal</h2>
         <div id="rawPlot" class="plot"></div>
+        <div class="panel-action">
+          <button id="processSample" class="primary" disabled>Process Sample</button>
+        </div>
       </div>
       <div id="processedPanel" class="panel hidden">
+        <h2>Processed Signal</h2>
         <div id="processedPlot" class="plot"></div>
       </div>
       <div id="patternPanel" class="panel hidden">
+        <h2>Known Pattern Comparison</h2>
         <div id="patternPlot" class="plot"></div>
+        <div class="panel-action">
+          <button id="transformSample" class="primary" disabled>Transform Sample</button>
+        </div>
       </div>
       <div id="featurePanel" class="wide hidden">
+        <div id="methodPanel" class="panel method-panel">
+          <h2>Choose a transform method</h2>
+          <div id="methodButtons" class="method-buttons"></div>
+          <p id="methodNote" class="hint"></p>
+          <div class="panel-action">
+            <button id="classifySample" class="primary" disabled>Ask Classifier</button>
+          </div>
+        </div>
         <div class="feature-grid">
           <div class="panel">
+            <h2>Transformed View</h2>
             <div id="featurePlot3d" class="plot"></div>
           </div>
           <div id="selectedCurvePanel" class="panel">
+            <h2>Clicked Signal Curve</h2>
             <p id="selectedCurveNote" class="curve-note">Click a highlighted map point to inspect its signal curve.</p>
             <div id="selectedCurvePlot" class="plot"></div>
           </div>
@@ -1413,6 +1500,7 @@ def plot_unknown_classification_game_html(
       </div>
       <div id="predictionPanel" class="prediction wide hidden">
         <div class="answer">
+          <h2>Prediction Results</h2>
           <div class="answer-row">
             <span>Raw signal guess</span>
             <strong id="rawGuessText" class="placeholder">?</strong>
@@ -1422,21 +1510,22 @@ def plot_unknown_classification_game_html(
             <strong id="cleanGuessText" class="placeholder">?</strong>
           </div>
           <div class="answer-row">
-            <span>After map guess</span>
+            <span>After transform guess</span>
             <strong id="mapGuessText" class="placeholder">?</strong>
-          </div>
-          <div class="answer-row">
-            <span>Computer says</span>
-            <strong id="predictionText" class="placeholder">?</strong>
           </div>
           <div class="answer-row">
             <span>True label</span>
             <strong id="truthText" class="placeholder">?</strong>
           </div>
           <div id="resultMessage" class="result-message">Reveal the true label to update the score.</div>
+          <div class="panel-action">
+            <button id="revealTruth" class="primary" disabled>Reveal True Label</button>
+          </div>
         </div>
         <div class="panel">
+          <h2>Classifier Confidence for This Sample</h2>
           <div id="confidencePlot" class="plot"></div>
+          <p id="confidenceNote" class="chart-note">Choose a transform method and click Ask Classifier. Tested methods will be added to this chart one at a time.</p>
         </div>
       </div>
     </section>
@@ -1444,6 +1533,13 @@ def plot_unknown_classification_game_html(
 
   <script>
     const data = {json.dumps(payload)};
+    const classColors = {json.dumps(CLASS_COLORS)};
+    const methodBarColors = {{
+      none: "#7A7A7A",
+      simple: "#F2994A",
+      pca: "#9B51E0",
+      cnn: "#2F80ED",
+    }};
     const samplePanel = document.getElementById("samplePanel");
     const sampleList = document.getElementById("sampleList");
     const rawPanel = document.getElementById("rawPanel");
@@ -1453,6 +1549,8 @@ def plot_unknown_classification_game_html(
     const processedPanel = document.getElementById("processedPanel");
     const patternPanel = document.getElementById("patternPanel");
     const featurePanel = document.getElementById("featurePanel");
+    const methodButtons = document.getElementById("methodButtons");
+    const methodNote = document.getElementById("methodNote");
     const selectedCurvePanel = document.getElementById("selectedCurvePanel");
     const selectedCurveNote = document.getElementById("selectedCurveNote");
     const predictionPanel = document.getElementById("predictionPanel");
@@ -1460,9 +1558,9 @@ def plot_unknown_classification_game_html(
     const rawGuessText = document.getElementById("rawGuessText");
     const cleanGuessText = document.getElementById("cleanGuessText");
     const mapGuessText = document.getElementById("mapGuessText");
-    const predictionText = document.getElementById("predictionText");
     const truthText = document.getElementById("truthText");
     const resultMessage = document.getElementById("resultMessage");
+    const confidenceNote = document.getElementById("confidenceNote");
     const roundCount = document.getElementById("roundCount");
     const studentScore = document.getElementById("studentScore");
     const classifierScore = document.getElementById("classifierScore");
@@ -1475,6 +1573,14 @@ def plot_unknown_classification_game_html(
     let studentCorrect = 0;
     let classifierCorrect = 0;
     let roundFinished = false;
+    let currentTransformMethod = "none";
+    let classifierGuess = null;
+    let classifierMethodLabel = null;
+    let testedClassifierResults = {{}};
+    let testedClassifierMethodOrder = [];
+    const methodById = Object.fromEntries(
+      data.transformMethods.map(method => [method.id, method])
+    );
     const referenceSampleById = Object.fromEntries(
       data.referenceSamples.map(sample => [sample.id, sample])
     );
@@ -1500,9 +1606,20 @@ def plot_unknown_classification_game_html(
       }};
     }}
 
-    function feature3dLayout() {{
+    function noTransformLayout() {{
       return {{
-        title: "3D Signal Similarity Map",
+        title: "No Transform: Cleaned Signal",
+        xaxis: {{ title: "Processed measurement point" }},
+        yaxis: {{ title: "Processed response" }},
+        margin: {{ l: 64, r: 18, b: 55, t: 48 }},
+        template: "plotly_white",
+        legend: {{ orientation: "v" }},
+      }};
+    }}
+
+    function feature3dLayout(method) {{
+      return {{
+        title: `${{method.label}}: 3D Similarity Map`,
         scene: {{
           xaxis: {{ title: "Feature 1" }},
           yaxis: {{ title: "Feature 2" }},
@@ -1510,17 +1627,28 @@ def plot_unknown_classification_game_html(
         }},
         margin: {{ l: 0, r: 0, b: 0, t: 50 }},
         template: "plotly_white",
-        showlegend: false,
+        showlegend: true,
+        legend: {{ x: 0.02, y: 0.98, bgcolor: "rgba(255,255,255,0.82)" }},
       }};
     }}
 
     function confidenceLayout() {{
       return {{
-        title: "Confidence for each class",
+        title: "Classifier Confidence Comparison",
         xaxis: {{ title: "Class" }},
         yaxis: {{ title: "Confidence", range: [0, 1] }},
         margin: {{ l: 64, r: 18, b: 55, t: 48 }},
         template: "plotly_white",
+        barmode: "group",
+        legend: {{
+          x: 0.99,
+          y: 0.99,
+          xanchor: "right",
+          yanchor: "top",
+          bgcolor: "rgba(255,255,255,0.86)",
+          bordercolor: "#dddddd",
+          borderwidth: 1,
+        }},
       }};
     }}
 
@@ -1567,29 +1695,6 @@ def plot_unknown_classification_game_html(
       return traces;
     }}
 
-    function reference3dTraces() {{
-      return data.classOrder.map(label => {{
-        const samples = data.referenceSamples.filter(sample => sample.label === label);
-        return {{
-          type: "scatter3d",
-          mode: "markers",
-          name: `${{label}} clickable examples`,
-          x: samples.map(sample => sample.mapPoint3d[0]),
-          y: samples.map(sample => sample.mapPoint3d[1]),
-          z: samples.map(sample => sample.mapPoint3d[2]),
-          customdata: samples.map(sample => sample.id),
-          text: samples.map(sample => sample.displayName),
-          hovertemplate: "%{{text}}<extra></extra>",
-          marker: {{
-            color: samples.map(sample => sample.color),
-            size: 8,
-            symbol: "square-open",
-            line: {{ width: 5 }},
-          }},
-        }};
-      }});
-    }}
-
     function updateScoreboard() {{
       roundCount.textContent = String(rounds);
       studentScore.textContent = String(studentCorrect);
@@ -1607,9 +1712,42 @@ def plot_unknown_classification_game_html(
         button.type = "button";
         button.className = "choice";
         button.textContent = label;
+        const color = classColors[label] || "#777777";
+        button.style.setProperty("--choice-color", color);
+        button.style.setProperty("--choice-bg", hexToRgba(color, 0.11));
+        button.style.setProperty("--choice-hover-bg", hexToRgba(color, 0.18));
         button.disabled = true;
         button.addEventListener("click", () => makeGuess(label));
         guessButtons.appendChild(button);
+      }});
+    }}
+
+    function initializeMethodButtons() {{
+      methodButtons.innerHTML = "";
+      data.transformMethods.forEach(method => {{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "method-choice";
+        button.textContent = method.label;
+        const color = methodBarColors[method.id] || "#777777";
+        button.style.setProperty("--method-color", color);
+        button.style.setProperty("--method-bg", hexToRgba(color, 0.11));
+        button.style.setProperty("--method-hover-bg", hexToRgba(color, 0.18));
+        button.addEventListener("click", () => plotTransformMethod(method.id));
+        methodButtons.appendChild(button);
+      }});
+    }}
+
+    function markSelectedMethod(methodId) {{
+      document.querySelectorAll(".method-choice").forEach(button => {{
+        const selected = methodById[methodId] && button.textContent === methodById[methodId].label;
+        button.classList.toggle("selected", selected);
+      }});
+    }}
+
+    function setMethodButtonsEnabled(enabled) {{
+      document.querySelectorAll(".method-choice").forEach(button => {{
+        button.disabled = !enabled;
       }});
     }}
 
@@ -1662,14 +1800,29 @@ def plot_unknown_classification_game_html(
       return traces.map(trace => JSON.parse(JSON.stringify(trace)));
     }}
 
-    function unknown3dTrace(sample) {{
+    function clearSelectedCurve() {{
+      selectedCurveNote.textContent = "Click a highlighted map point to inspect its signal curve.";
+      if (document.getElementById("selectedCurvePlot").data) {{
+        Plotly.purge("selectedCurvePlot");
+      }}
+    }}
+
+    function purgePlotIfDrawn(id) {{
+      const plot = document.getElementById(id);
+      if (plot && plot.data) {{
+        Plotly.purge(plot);
+      }}
+    }}
+
+    function unknown3dTrace(sample, methodId) {{
+      const point = sample.mapPoints3d[methodId];
       return {{
         type: "scatter3d",
         mode: "markers",
-        name: "unknown sample",
-        x: [sample.mapPoint3d[0]],
-        y: [sample.mapPoint3d[1]],
-        z: [sample.mapPoint3d[2]],
+        name: "Mystery sample",
+        x: [point[0]],
+        y: [point[1]],
+        z: [point[2]],
         customdata: ["mystery"],
         text: ["Mystery sample"],
         hovertemplate: "%{{text}}<extra></extra>",
@@ -1732,10 +1885,125 @@ def plot_unknown_classification_game_html(
       );
     }}
 
+    function reference3dTraces(methodId) {{
+      return data.classOrder.map(label => {{
+        const samples = data.referenceSamples.filter(sample => sample.label === label && sample.mapPoints3d[methodId]);
+        return {{
+          type: "scatter3d",
+          mode: "markers",
+          name: label,
+          x: samples.map(sample => sample.mapPoints3d[methodId][0]),
+          y: samples.map(sample => sample.mapPoints3d[methodId][1]),
+          z: samples.map(sample => sample.mapPoints3d[methodId][2]),
+          customdata: samples.map(sample => sample.id),
+          text: samples.map(sample => sample.displayName),
+          hovertemplate: "%{{text}}<extra></extra>",
+          marker: {{
+            color: samples.map(sample => sample.color),
+            size: 8,
+            symbol: "square-open",
+            line: {{ width: 5 }},
+          }},
+        }};
+      }});
+    }}
+
     function attachFeatureClickHandlers() {{
       const plot3d = document.getElementById("featurePlot3d");
       if (plot3d.removeAllListeners) plot3d.removeAllListeners("plotly_click");
       plot3d.on("plotly_click", handleFeatureClick);
+    }}
+
+    function resetClassifierResults() {{
+      testedClassifierResults = {{}};
+      testedClassifierMethodOrder = [];
+      classifierGuess = null;
+      classifierMethodLabel = null;
+      truthText.textContent = "?";
+      truthText.classList.add("placeholder");
+      confidenceNote.textContent = "Choose a transform method and click Ask Classifier. Tested methods will be added to this chart one at a time.";
+      const confidencePlot = document.getElementById("confidencePlot");
+      if (confidencePlot.data) {{
+        Plotly.purge(confidencePlot);
+      }}
+    }}
+
+    function renderClassifierResults() {{
+      if (testedClassifierMethodOrder.length === 0) {{
+        return;
+      }}
+      const traces = testedClassifierMethodOrder.map(methodId => {{
+        const method = methodById[methodId];
+        const prediction = testedClassifierResults[methodId];
+        return {{
+          type: "bar",
+          name: `${{method.label}} -> ${{prediction.predictedLabel}}`,
+          x: data.classOrder,
+          y: prediction.probabilities,
+          marker: {{ color: methodBarColors[methodId] || "#777777" }},
+          text: prediction.probabilities.map(value => `${{(100 * value).toFixed(1)}}%`),
+          textposition: "outside",
+        }};
+      }});
+      Plotly.newPlot("confidencePlot", traces, confidenceLayout(), {{ responsive: true, displaylogo: false }});
+      confidenceNote.textContent = "The tallest bar is the class each tested method chooses. Comparing methods helps students see how different transformations can change the evidence given to the classifier.";
+    }}
+
+    function allClassifierMethodsTested() {{
+      return testedClassifierMethodOrder.length >= data.transformMethods.length;
+    }}
+
+    function updateClassifyButtonAvailability() {{
+      const canClassify = Boolean(activeSample && mapGuess && !allClassifierMethodsTested());
+      setButtonEnabled("classifySample", canClassify);
+    }}
+
+    function plotTransformMethod(methodId) {{
+      if (!activeSample || !methodById[methodId]) return;
+      const method = methodById[methodId];
+      currentTransformMethod = methodId;
+      markSelectedMethod(methodId);
+      methodNote.textContent = method.description;
+      selectedCurvePanel.classList.remove("hidden");
+      if (guessStage === "map") {{
+        if (roundFinished) {{
+          updateClassifyButtonAvailability();
+          guessStatus.textContent = allClassifierMethodsTested()
+            ? "The true label is revealed. All classifier methods have been tested."
+            : "The true label is revealed. You can still compare views and add remaining classifier methods.";
+        }} else if (mapGuess) {{
+          updateClassifyButtonAvailability();
+          guessStatus.textContent = "Click Ask Classifier to add this method to the comparison.";
+        }} else {{
+          setButtonEnabled("classifySample", false);
+          guessStatus.textContent = "After seeing this transform, make your final guess.";
+        }}
+      }}
+
+      if (method.plotKind === "curve") {{
+        Plotly.newPlot(
+          "featurePlot3d",
+          classPatternTraces(activeSample),
+          noTransformLayout(),
+          {{ responsive: true, displaylogo: false }}
+        );
+        showSelectedCurve(activeSample, "Current curve: mystery sample", "#111111", "mystery sample");
+        return;
+      }}
+
+      clearSelectedCurve();
+      selectedCurveNote.textContent = "Click an open square or the black mystery marker to inspect its cleaned curve.";
+      Plotly.newPlot(
+        "featurePlot3d",
+        [
+          ...cloneTraces(method.baseTraces),
+          ...reference3dTraces(methodId),
+          unknown3dTrace(activeSample, methodId),
+        ],
+        feature3dLayout(method),
+        {{ responsive: true, displaylogo: false }}
+      );
+      attachFeatureClickHandlers();
     }}
 
     function resetRoundDisplay() {{
@@ -1744,17 +2012,22 @@ def plot_unknown_classification_game_html(
       featurePanel.classList.add("hidden");
       selectedCurvePanel.classList.add("hidden");
       predictionPanel.classList.add("hidden");
-      selectedCurveNote.textContent = "Click a highlighted map point to inspect its signal curve.";
-      if (document.getElementById("selectedCurvePlot").data) {{
-        Plotly.purge("selectedCurvePlot");
-      }}
+      clearSelectedCurve();
+      purgePlotIfDrawn("rawPlot");
+      purgePlotIfDrawn("processedPlot");
+      purgePlotIfDrawn("patternPlot");
+      purgePlotIfDrawn("featurePlot3d");
+      currentTransformMethod = "none";
+      markSelectedMethod("none");
       guessStage = null;
       rawGuess = null;
       cleanGuess = null;
       mapGuess = null;
+      resetClassifierResults();
       roundFinished = false;
       clearGuessSelection();
       setGuessButtonsEnabled(false);
+      setMethodButtonsEnabled(false);
       guessStatus.textContent = "Choose a mystery sample first.";
       rawGuessText.textContent = "?";
       rawGuessText.classList.add("placeholder");
@@ -1762,16 +2035,12 @@ def plot_unknown_classification_game_html(
       cleanGuessText.classList.add("placeholder");
       mapGuessText.textContent = "?";
       mapGuessText.classList.add("placeholder");
-      predictionText.textContent = "?";
-      predictionText.classList.add("placeholder");
-      truthText.textContent = "?";
-      truthText.classList.add("placeholder");
       resultMessage.textContent = "Reveal the true label to update the score.";
       setButtonEnabled("processSample", false);
       setButtonEnabled("transformSample", false);
       setButtonEnabled("classifySample", false);
       setButtonEnabled("revealTruth", false);
-      setButtonEnabled("tryAnother", false);
+      setButtonEnabled("tryAnother", true);
     }}
 
     function selectUnknownSample(sampleIndex, button) {{
@@ -1819,8 +2088,8 @@ def plot_unknown_classification_game_html(
         mapGuess = label;
         mapGuessText.textContent = label;
         mapGuessText.classList.remove("placeholder");
-        guessStatus.textContent = `After map guess: ${{label}}`;
-        statusEl.textContent = "Now ask the computer to classify the same sample.";
+        guessStatus.textContent = `After transform guess: ${{label}}`;
+        statusEl.textContent = "Now ask the classifier to classify the same sample.";
         setButtonEnabled("classifySample", true);
       }}
     }}
@@ -1831,10 +2100,7 @@ def plot_unknown_classification_game_html(
       patternPanel.classList.remove("hidden");
       featurePanel.classList.add("hidden");
       predictionPanel.classList.add("hidden");
-      predictionText.textContent = "?";
-      predictionText.classList.add("placeholder");
-      truthText.textContent = "?";
-      truthText.classList.add("placeholder");
+      resetClassifierResults();
       resultMessage.textContent = "Reveal the true label to update the score.";
       Plotly.newPlot("processedPlot", [{{
         type: "scatter",
@@ -1860,55 +2126,59 @@ def plot_unknown_classification_game_html(
       if (!activeSample || !cleanGuess) return;
       featurePanel.classList.remove("hidden");
       selectedCurvePanel.classList.remove("hidden");
-      selectedCurveNote.textContent = "Click an open square or the black mystery marker to inspect its cleaned curve.";
-      Plotly.newPlot(
-        "featurePlot3d",
-        [
-          ...cloneTraces(data.featureTraces3dBase),
-          ...reference3dTraces(),
-          unknown3dTrace(activeSample),
-        ],
-        feature3dLayout(),
-        {{ responsive: true, displaylogo: false }}
-      );
-      attachFeatureClickHandlers();
+      plotTransformMethod("none");
       guessStage = "map";
       clearGuessSelection();
       setGuessButtonsEnabled(true);
-      guessStatus.textContent = "After seeing the map position, make your final guess.";
-      statusEl.textContent = "Nearby points have similar signal shapes. Click highlighted points to inspect curves, then make your final guess.";
+      setMethodButtonsEnabled(true);
+      guessStatus.textContent = "Choose a method, then make your final guess.";
+      statusEl.textContent = "Try different ways to view the same sample. Good transformations make similar samples gather together.";
       setButtonEnabled("transformSample", false);
       setButtonEnabled("classifySample", false);
     }}
 
     function classifySample() {{
-      if (!activeSample || !mapGuess || roundFinished) return;
+      if (!activeSample || !mapGuess || allClassifierMethodsTested()) return;
+      const methodPrediction = activeSample.methodPredictions[currentTransformMethod];
+      const method = methodById[currentTransformMethod];
+      if (!methodPrediction || !method) return;
+      classifierGuess = methodPrediction.predictedLabel;
+      classifierMethodLabel = method.label;
+      const alreadyTested = testedClassifierMethodOrder.includes(currentTransformMethod);
+      testedClassifierResults[currentTransformMethod] = methodPrediction;
+      if (!alreadyTested) {{
+        testedClassifierMethodOrder.push(currentTransformMethod);
+      }}
       predictionPanel.classList.remove("hidden");
-      predictionText.textContent = activeSample.predictedLabel;
-      predictionText.classList.remove("placeholder");
-      truthText.textContent = "?";
-      truthText.classList.add("placeholder");
-      resultMessage.textContent = "The computer has guessed. Reveal the true label to finish this round.";
-      Plotly.newPlot("confidencePlot", [{{
-        type: "bar",
-        x: data.classOrder,
-        y: activeSample.probabilities,
-        marker: {{ color: data.classOrder.map(label => ({json.dumps(CLASS_COLORS)}[label] || "#777777")) }},
-        text: activeSample.probabilities.map(value => `${{(100 * value).toFixed(1)}}%`),
-        textposition: "outside",
-      }}], confidenceLayout(), {{ responsive: true, displaylogo: false }});
-      statusEl.textContent = "The computer has made a prediction. Now reveal the answer.";
-      guessStage = null;
-      setGuessButtonsEnabled(false);
+      if (!roundFinished) {{
+        truthText.textContent = "?";
+        truthText.classList.add("placeholder");
+      }}
+      renderClassifierResults();
+      const testedCount = testedClassifierMethodOrder.length;
+      const allTested = allClassifierMethodsTested();
+      if (roundFinished) {{
+        resultMessage.textContent = `${{method.label}} added after reveal. You have tested ${{testedCount}} method${{testedCount === 1 ? "" : "s"}}.${{allTested ? " All methods are now shown." : " Choose another transform and ask again to add more."}}`;
+        statusEl.textContent = allTested
+          ? "All classifier methods have been compared for this sample."
+          : "Classifier comparison updated after reveal. You can still test remaining methods.";
+      }} else {{
+        resultMessage.textContent = `${{method.label}} added. You have tested ${{testedCount}} method${{testedCount === 1 ? "" : "s"}}.${{allTested ? " All methods are now shown. Reveal the true label when ready." : " Choose another transform and ask again, or reveal the true label."}}`;
+        statusEl.textContent = "Classifier comparison updated. You can test another method before revealing the answer.";
+      }}
+      guessStage = "map";
+      setGuessButtonsEnabled(!roundFinished);
+      setMethodButtonsEnabled(true);
       setButtonEnabled("processSample", false);
       setButtonEnabled("transformSample", false);
-      setButtonEnabled("revealTruth", true);
+      setButtonEnabled("classifySample", !allTested);
+      setButtonEnabled("revealTruth", !roundFinished);
     }}
 
     function revealTruth() {{
       if (!activeSample || roundFinished) return;
       const studentWasCorrect = mapGuess === activeSample.trueLabel;
-      const classifierWasCorrect = activeSample.predictedLabel === activeSample.trueLabel;
+      const classifierWasCorrect = classifierGuess === activeSample.trueLabel;
       roundFinished = true;
       rounds += 1;
       if (studentWasCorrect) studentCorrect += 1;
@@ -1917,12 +2187,21 @@ def plot_unknown_classification_game_html(
       truthText.textContent = activeSample.trueLabel;
       truthText.classList.remove("placeholder");
       const changedGuess = rawGuess !== mapGuess || cleanGuess !== mapGuess;
-      resultMessage.textContent = `Final student guess: ${{mapGuess}}. You were ${{studentWasCorrect ? "correct" : "not correct"}}. The computer was ${{classifierWasCorrect ? "correct" : "not correct"}}.${{changedGuess ? " Your guess changed as the evidence changed." : ""}}`;
+      const testedSummary = testedClassifierMethodOrder.map(methodId => {{
+        const method = methodById[methodId];
+        const prediction = testedClassifierResults[methodId];
+        return `${{method.label}}: ${{prediction.predictedLabel}}`;
+      }}).join(", ");
+      resultMessage.textContent = `Final student guess: ${{mapGuess}}. Tested classifier methods: ${{testedSummary}}. Score uses the last tested method: ${{classifierMethodLabel}} guessed ${{classifierGuess}}. You were ${{studentWasCorrect ? "correct" : "not correct"}}. The classifier was ${{classifierWasCorrect ? "correct" : "not correct"}}.${{changedGuess ? " Your guess changed as the evidence changed." : ""}}`;
       statusEl.textContent = "Round complete. Try another mystery sample.";
       setButtonEnabled("revealTruth", false);
-      setButtonEnabled("classifySample", false);
+      setButtonEnabled("classifySample", !allClassifierMethodsTested());
       setButtonEnabled("tryAnother", true);
       setGuessButtonsEnabled(false);
+      setMethodButtonsEnabled(true);
+      guessStatus.textContent = allClassifierMethodsTested()
+        ? "The true label is revealed. All classifier methods have been tested."
+        : "The true label is revealed. You can still compare views and add remaining classifier methods.";
     }}
 
     function resetGame() {{
@@ -1944,6 +2223,8 @@ def plot_unknown_classification_game_html(
 
     initializeSampleButtons();
     initializeGuessButtons();
+    initializeMethodButtons();
+    setMethodButtonsEnabled(false);
     updateScoreboard();
     document.getElementById("processSample").addEventListener("click", processSample);
     document.getElementById("transformSample").addEventListener("click", transformSample);
@@ -1982,10 +2263,168 @@ def _build_class_pattern_payloads(
     return patterns
 
 
+def _build_game_transform_method_payloads(
+    result: DemoClassificationResult,
+    no_transform_result: DemoClassificationResult | None,
+    simple_feature_result: DemoClassificationResult | None,
+    pca_result: DemoClassificationResult | None,
+) -> tuple[list[dict[str, object]], dict[str, dict[int, np.ndarray]]]:
+    methods: list[dict[str, object]] = [
+        {
+            "id": "none",
+            "label": "No Transform",
+            "plotKind": "curve",
+            "description": "Keep the cleaned signal as a curve. This is the hardest view because students still compare shapes by eye.",
+        }
+    ]
+    map_lookup_by_method: dict[str, dict[int, np.ndarray]] = {}
+
+    if simple_feature_result is not None:
+        methods.append(
+            {
+                "id": "simple",
+                "label": "Manual Features",
+                "plotKind": "map",
+                "description": "Measure each signal with simple numbers, such as its average level, range, peak size, total area, and where peaks happen. Then place samples with similar numbers near each other.",
+                "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                    class_order=simple_feature_result.class_order,
+                    x_train_map_3d=simple_feature_result.x_train_map_3d,
+                    x_test_map_3d=simple_feature_result.x_test_map_3d,
+                    y_train=simple_feature_result.y_train,
+                    y_test=simple_feature_result.y_test,
+                ),
+            }
+        )
+        map_lookup_by_method["simple"] = _build_3d_map_lookup_by_global_index(
+            train_indices=simple_feature_result.train_indices,
+            x_train_map_3d=simple_feature_result.x_train_map_3d,
+            test_indices=simple_feature_result.test_indices,
+            x_test_map_3d=simple_feature_result.x_test_map_3d,
+        )
+
+    if pca_result is not None:
+        methods.append(
+            {
+                "id": "pca",
+                "label": "PCA",
+                "plotKind": "map",
+                "description": "Compress the full processed signal into three map coordinates without learning class-specific patterns.",
+                "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                    class_order=pca_result.class_order,
+                    x_train_map_3d=pca_result.x_train_map_3d,
+                    x_test_map_3d=pca_result.x_test_map_3d,
+                    y_train=pca_result.y_train,
+                    y_test=pca_result.y_test,
+                ),
+            }
+        )
+        map_lookup_by_method["pca"] = _build_3d_map_lookup_by_global_index(
+            train_indices=pca_result.train_indices,
+            x_train_map_3d=pca_result.x_train_map_3d,
+            test_indices=pca_result.test_indices,
+            x_test_map_3d=pca_result.x_test_map_3d,
+        )
+
+    methods.append(
+        {
+            "id": "cnn",
+            "label": "CNN",
+            "plotKind": "map",
+            "description": "Let the CNN learn useful signal patterns first, then map the learned features into three coordinates.",
+            "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                class_order=result.class_order,
+                x_train_map_3d=result.x_train_map_3d,
+                x_test_map_3d=result.x_test_map_3d,
+                y_train=result.y_train,
+                y_test=result.y_test,
+            ),
+        }
+    )
+    map_lookup_by_method["cnn"] = _build_3d_map_lookup_by_global_index(
+        train_indices=result.train_indices,
+        x_train_map_3d=result.x_train_map_3d,
+        test_indices=result.test_indices,
+        x_test_map_3d=result.x_test_map_3d,
+    )
+
+    return methods, map_lookup_by_method
+
+
+def _build_3d_map_lookup_by_global_index(
+    train_indices: np.ndarray,
+    x_train_map_3d: np.ndarray,
+    test_indices: np.ndarray,
+    x_test_map_3d: np.ndarray,
+) -> dict[int, np.ndarray]:
+    lookup: dict[int, np.ndarray] = {}
+    for position, global_index in enumerate(train_indices):
+        lookup[int(global_index)] = x_train_map_3d[int(position)]
+    for position, global_index in enumerate(test_indices):
+        lookup[int(global_index)] = x_test_map_3d[int(position)]
+    return lookup
+
+
+def _map_points_for_global_index(
+    global_index: int,
+    transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
+) -> dict[str, list[float]]:
+    map_points: dict[str, list[float]] = {}
+    for method_id, lookup in transform_map_lookup_by_method.items():
+        point = lookup.get(int(global_index))
+        if point is not None:
+            map_points[method_id] = _to_float_list(point)
+    return map_points
+
+
+def _build_game_prediction_lookup_by_method(
+    cnn_result: DemoClassificationResult,
+    no_transform_result: DemoClassificationResult | None,
+    simple_feature_result: DemoClassificationResult | None,
+    pca_result: DemoClassificationResult | None,
+) -> dict[str, dict[int, dict[str, object]]]:
+    method_results = {
+        "none": no_transform_result if no_transform_result is not None else cnn_result,
+        "simple": simple_feature_result,
+        "pca": pca_result,
+        "cnn": cnn_result,
+    }
+    lookups: dict[str, dict[int, dict[str, object]]] = {}
+    for method_id, method_result in method_results.items():
+        if method_result is None:
+            continue
+        lookups[method_id] = _build_prediction_lookup_by_global_index(method_result)
+    return lookups
+
+
+def _build_prediction_lookup_by_global_index(
+    result: DemoClassificationResult,
+) -> dict[int, dict[str, object]]:
+    lookup: dict[int, dict[str, object]] = {}
+    for test_position, global_index in enumerate(result.test_indices):
+        lookup[int(global_index)] = {
+            "predictedLabel": str(result.y_pred[int(test_position)]),
+            "probabilities": _to_float_list(result.y_prob[int(test_position)]),
+        }
+    return lookup
+
+
+def _predictions_for_global_index(
+    global_index: int,
+    prediction_lookup_by_method: dict[str, dict[int, dict[str, object]]],
+) -> dict[str, dict[str, object]]:
+    predictions: dict[str, dict[str, object]] = {}
+    for method_id, lookup in prediction_lookup_by_method.items():
+        prediction = lookup.get(int(global_index))
+        if prediction is not None:
+            predictions[method_id] = prediction
+    return predictions
+
+
 def _build_clickable_reference_payloads(
     processed_by_class: dict[str, pd.DataFrame],
     result: DemoClassificationResult,
     max_per_class: int,
+    transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
 ) -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
 
@@ -2014,8 +2453,10 @@ def _build_clickable_reference_payloads(
                     "label": ref_label,
                     "color": CLASS_COLORS.get(ref_label, "#777777"),
                     "processedSignal": _to_float_list(processed_signal),
-                    "mapPoint": _to_float_list(result.x_train_map[int(train_position)]),
-                    "mapPoint3d": _to_float_list(result.x_train_map_3d[int(train_position)]),
+                    "mapPoints3d": _map_points_for_global_index(
+                        global_index=global_index,
+                        transform_map_lookup_by_method=transform_map_lookup_by_method,
+                    ),
                 }
             )
 
@@ -2027,18 +2468,22 @@ def _build_unknown_candidate_payloads(
     processed_by_class: dict[str, pd.DataFrame],
     result: DemoClassificationResult,
     max_per_class: int,
+    transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
+    prediction_lookup_by_method: dict[str, dict[int, dict[str, object]]],
 ) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
 
     for label in result.class_order:
         class_positions = np.flatnonzero(result.y_test == label)
-        correct_positions = class_positions[result.y_pred[class_positions] == result.y_test[class_positions]]
-        preferred_positions = correct_positions if len(correct_positions) else class_positions
-        if len(preferred_positions) == 0:
+        if len(class_positions) == 0:
             continue
 
-        confidence = result.y_prob[preferred_positions].max(axis=1)
-        selected_positions = preferred_positions[np.argsort(confidence)[::-1]][:max_per_class]
+        confidence = result.y_prob[class_positions].max(axis=1)
+        selected_positions = _select_mixed_confidence_positions(
+            positions=class_positions,
+            confidence=confidence,
+            max_count=max_per_class,
+        )
         for test_position in selected_positions:
             global_index = int(result.test_indices[int(test_position)])
             raw_label, raw_sample_idx, raw_signal = _global_signal_info_by_index(
@@ -2058,17 +2503,57 @@ def _build_unknown_candidate_payloads(
                     "rawSampleIdx": raw_sample_idx,
                     "rawSignal": _to_float_list(raw_signal),
                     "processedSignal": _to_float_list(processed_signal),
-                    "probabilities": _to_float_list(result.y_prob[int(test_position)]),
-                    "predictedLabel": str(result.y_pred[int(test_position)]),
                     "trueLabel": str(result.y_test[int(test_position)]),
-                    "mapPoint": _to_float_list(result.x_test_map[int(test_position)]),
-                    "mapPoint3d": _to_float_list(result.x_test_map_3d[int(test_position)]),
+                    "methodPredictions": _predictions_for_global_index(
+                        global_index=global_index,
+                        prediction_lookup_by_method=prediction_lookup_by_method,
+                    ),
+                    "mapPoints3d": _map_points_for_global_index(
+                        global_index=global_index,
+                        transform_map_lookup_by_method=transform_map_lookup_by_method,
+                    ),
                 }
             )
 
     if not candidates:
         raise ValueError("No unknown candidate samples are available for the classification game.")
     return candidates
+
+
+def _select_mixed_confidence_positions(
+    positions: np.ndarray,
+    confidence: np.ndarray,
+    max_count: int,
+) -> np.ndarray:
+    """Pick a mix of easy and harder holdout samples instead of only obvious ones."""
+    positions = np.asarray(positions)
+    confidence = np.asarray(confidence, dtype=np.float32)
+    if len(positions) <= max_count:
+        return positions
+
+    order = np.argsort(confidence)
+    ordered_positions = positions[order]
+    quantiles = np.linspace(0.25, 0.95, max_count)
+    candidate_indices = np.rint(quantiles * (len(ordered_positions) - 1)).astype(int)
+
+    selected_indices: list[int] = []
+    used: set[int] = set()
+    for candidate_index in candidate_indices:
+        candidate_index = int(np.clip(candidate_index, 0, len(ordered_positions) - 1))
+        if candidate_index in used:
+            for offset in range(1, len(ordered_positions)):
+                lower = candidate_index - offset
+                upper = candidate_index + offset
+                if lower >= 0 and lower not in used:
+                    candidate_index = lower
+                    break
+                if upper < len(ordered_positions) and upper not in used:
+                    candidate_index = upper
+                    break
+        used.add(candidate_index)
+        selected_indices.append(candidate_index)
+
+    return ordered_positions[np.asarray(selected_indices, dtype=int)]
 
 
 def _global_signal_by_index(
@@ -2154,6 +2639,52 @@ def _plotly_2d_feature_traces(
                     "symbol": "star",
                     "line": {"color": "white", "width": 1.2},
                 },
+            }
+        )
+    return traces
+
+
+def _plotly_3d_feature_traces_from_arrays(
+    class_order: Sequence[str],
+    x_train_map_3d: np.ndarray,
+    x_test_map_3d: np.ndarray,
+    y_train: np.ndarray,
+    y_test: np.ndarray,
+) -> list[dict[str, object]]:
+    traces = []
+    for label in class_order:
+        train_mask = y_train == label
+        test_mask = y_test == label
+        color = CLASS_COLORS.get(label, "#777777")
+        traces.append(
+            {
+                "type": "scatter3d",
+                "mode": "markers",
+                "name": f"{label} known",
+                "x": _to_float_list(x_train_map_3d[train_mask, 0]),
+                "y": _to_float_list(x_train_map_3d[train_mask, 1]),
+                "z": _to_float_list(x_train_map_3d[train_mask, 2]),
+                "marker": {"color": color, "opacity": 0.34, "size": 3},
+                "hoverinfo": "skip",
+                "showlegend": False,
+            }
+        )
+        traces.append(
+            {
+                "type": "scatter3d",
+                "mode": "markers",
+                "name": f"{label} test",
+                "x": _to_float_list(x_test_map_3d[test_mask, 0]),
+                "y": _to_float_list(x_test_map_3d[test_mask, 1]),
+                "z": _to_float_list(x_test_map_3d[test_mask, 2]),
+                "marker": {
+                    "color": color,
+                    "opacity": 0.62,
+                    "size": 4,
+                    "symbol": "circle",
+                },
+                "hoverinfo": "skip",
+                "showlegend": False,
             }
         )
     return traces

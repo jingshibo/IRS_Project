@@ -26,7 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(SCHOOL_VISIT_DIR) not in sys.path:
     sys.path.insert(0, str(SCHOOL_VISIT_DIR))
 
-from school_visit_demo.classifier import train_demo_classifier
+from school_visit_demo.classifier import train_demo_classifier, train_pca_demo_classifier
 from school_visit_demo.config import CLASS_ORDER, RANDOM_SEED
 from school_visit_demo.cnn_classifier import train_cnn_demo_classifier
 from school_visit_demo.data_pipeline import (
@@ -186,16 +186,42 @@ stale_feature_table_path = output_dir / "feature_examples.csv"
 if stale_feature_table_path.exists():
     stale_feature_table_path.unlink()
 
-log("Extracting simple, manually designed features for the KNN baseline...")
+log("Extracting manually designed features for the Manual Features classifier...")
 feature_data = extract_demo_features(
     signal_data.x_all,
     signal_data.y_all,
     channel_names=signal_data.selected_value_types,
 )
 
-log("Training KNN baseline classifier...")
+processed_signal_features = signal_data.x_all.reshape(len(signal_data.x_all), -1)
+
+log("Training direct cleaned-signal classifier...")
+no_transform_classification = train_demo_classifier(
+    processed_signal_features,
+    signal_data.y_all,
+    class_order=signal_data.class_order,
+    random_seed=random_seed,
+    test_size=test_size,
+    unknown_test_position=unknown_test_position,
+    method_name="No Transform",
+    input_description="flattened processed signal values",
+)
+
+log("Training Manual Features classifier...")
 knn_classification = train_demo_classifier(
     feature_data.x_features,
+    signal_data.y_all,
+    class_order=signal_data.class_order,
+    random_seed=random_seed,
+    test_size=test_size,
+    unknown_test_position=unknown_test_position,
+    method_name="Manual Features",
+    input_description="manually designed signal features",
+)
+
+log("Training PCA-space classifier...")
+pca_classification = train_pca_demo_classifier(
+    processed_signal_features,
     signal_data.y_all,
     class_order=signal_data.class_order,
     random_seed=random_seed,
@@ -262,6 +288,9 @@ unknown_game_path = plot_unknown_classification_game_html(
     signal_data.processed_by_class,
     classification,
     output_dir / "08_unknown_classification_game.html",
+    no_transform_result=no_transform_classification,
+    simple_feature_result=knn_classification,
+    pca_result=pca_classification,
 )
 log_saved(unknown_game_path)
 
@@ -285,7 +314,9 @@ log("------------")
 log(f"Classifier: {classification.method_name}")
 log(f"Classifier input: {classification.input_description}")
 log(f"Holdout accuracy: {classification.test_accuracy:.3f}")
+log(f"No Transform holdout accuracy: {no_transform_classification.test_accuracy:.3f}")
 log(f"Original holdout accuracy: {knn_classification.test_accuracy:.3f}")
+log(f"PCA holdout accuracy: {pca_classification.test_accuracy:.3f}")
 log(f"CNN holdout accuracy: {cnn_classification.test_accuracy:.3f}")
 log(f"Unknown example true label: {classification.unknown_true_label}")
 log(f"Unknown example prediction: {classification.unknown_pred_label}")

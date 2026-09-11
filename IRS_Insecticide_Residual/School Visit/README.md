@@ -67,16 +67,30 @@ Figure `07` reports row-normalized recall percentages in the confusion
 matrices. The label `Original` refers to the manually designed feature
 classifier. The label `CNN` refers to the learned signal-feature classifier.
 
-The interactive unknown-sample game embeds a balanced pool of 12 unknown
-holdout samples, with 4 samples from each class. Students choose an anonymous
-item from the mystery sample list, then guess LOW, TARGET, or HIGH from the raw
-signal. `Process Sample` shows the cleaned signal and a known-pattern
-comparison, using class average curves and usual-range bands. Students can then
-guess again from the cleaner evidence. `Transform Sample` changes the signal
-into a 3D signal similarity map, and students make a final guess from the
-clustered map position. A selected set of 90 known map points is clickable; when
-students click one of these points, the corresponding cleaned signal curve is
-shown beside the map. The mystery sample marker is clickable too. After that,
-students can ask the classifier, see confidence for each class, and finally
-reveal the true label. The page keeps a simple student-versus-computer score
-across rounds.
+The interactive unknown-sample game embeds a balanced pool of 12 mystery
+holdout samples, with 4 samples from each class and a mix of easier and harder
+examples. Students choose an anonymous item from the mystery sample list, then
+guess LOW, TARGET, or HIGH from the raw signal. `Process Sample` shows the
+cleaned signal and a known-pattern comparison, using class average curves and
+usual-range bands. Students can then guess again from the cleaner evidence.
+`Transform Sample` lets students choose
+between four views of the same sample: `No Transform`, `Manual Features`, `PCA`,
+and `CNN`. The map-based views use a 3D similarity map so students can compare
+whether different transformations make the classes cluster more clearly.
+`Manual Features` means simple signal measurements such as average level, range,
+peak size, total area, and where peaks happen. A
+selected set of 150 known map points is clickable; when students click one of
+these points, the corresponding cleaned signal curve is shown beside the map.
+The mystery sample marker is clickable too. After that, students can choose a
+method, ask the classifier, switch to another method, and ask again. The
+confidence chart only shows methods already tested in that round; its legend
+shows the class predicted by each tested method. Students can build the
+comparison step by step before revealing the true label. After the true label is
+revealed, the transform method buttons remain available so students can keep
+inspecting why different feature views look easier or harder to separate. They
+can also continue pressing `Ask Classifier` to add remaining untested methods to
+the confidence chart until all four methods have been compared. The `Choose
+Another Sample` button is available throughout the activity and clears
+the current sample display without changing completed scores. `Reset Score`
+clears the score counters. The page keeps a simple student-versus-classifier
+score across rounds.
