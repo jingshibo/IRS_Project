@@ -1271,8 +1271,12 @@ def plot_unknown_classification_game_html(
       padding: 10px;
     }}
     .guess-panel {{
+      position: sticky;
+      top: 10px;
+      z-index: 20;
       min-height: 126px;
       padding: 16px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
     }}
     .sample-panel {{
       display: flex;
@@ -1420,6 +1424,10 @@ def plot_unknown_classification_game_html(
       }}
       .top-row {{
         flex-direction: column;
+      }}
+      .guess-panel {{
+        position: static;
+        box-shadow: none;
       }}
     }}
   </style>
@@ -1946,7 +1954,7 @@ def plot_unknown_classification_game_html(
         }};
       }});
       Plotly.newPlot("confidencePlot", traces, confidenceLayout(), {{ responsive: true, displaylogo: false }});
-      confidenceNote.textContent = "The tallest bar is the class each tested method chooses. Comparing methods helps students see how different transformations can change the evidence given to the classifier.";
+      confidenceNote.textContent = "The tallest bar is the class each tested method chooses. Comparing methods to see how different transformations can change the classification evidence and results.";
     }}
 
     function allClassifierMethodsTested() {{
