@@ -93,9 +93,11 @@ measurements, area measurements, and derivative-change measurements. A
 selected set of 150 known map points is clickable; when students click one of
 these points, the corresponding cleaned signal curve is shown beside the map.
 The mystery sample marker is clickable too. After that, students can choose a
-method, ask the classifier, switch to another method, and ask again. The
-confidence chart only shows methods already tested in that round; its legend
-shows the class predicted by each tested method. Students can build the
+method, make a separate guess for that transform, ask the classifier, switch to
+another method, and ask again. The prediction panel lists all transform-stage
+student guesses, but the student score uses the first transform-stage guess.
+The confidence chart only shows methods already tested in that round; its
+legend shows the class predicted by each tested method. Students can build the
 comparison step by step before revealing the true label. After the true label is
 revealed, the transform method buttons remain available so students can keep
 inspecting why different feature views look easier or harder to separate. They

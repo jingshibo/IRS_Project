@@ -1436,6 +1436,24 @@ def plot_unknown_classification_game_html(
       font-size: 24px;
       line-height: 1.1;
     }}
+    .guess-list {{
+      display: grid;
+      gap: 5px;
+      font-size: 15px;
+    }}
+    .guess-list-row {{
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }}
+    .guess-list-row strong {{
+      font-size: 16px;
+      line-height: 1.2;
+    }}
+    .score-guess {{
+      color: var(--blue);
+      font-weight: 700;
+    }}
     .placeholder {{
       color: var(--muted);
     }}
@@ -1445,6 +1463,8 @@ def plot_unknown_classification_game_html(
       border-top: 1px solid #eeeeee;
       font-size: 16px;
       color: var(--muted);
+      line-height: 1.45;
+      white-space: pre-line;
     }}
     .chart-note {{
       margin: 8px 0 0;
@@ -1564,8 +1584,8 @@ def plot_unknown_classification_game_html(
             <strong id="cleanGuessText" class="placeholder">?</strong>
           </div>
           <div class="answer-row">
-            <span>After transform guess</span>
-            <strong id="mapGuessText" class="placeholder">?</strong>
+            <span>After transform guesses</span>
+            <div id="mapGuessList" class="guess-list"></div>
           </div>
           <div class="answer-row">
             <span>True label</span>
@@ -1611,7 +1631,7 @@ def plot_unknown_classification_game_html(
     const statusEl = document.getElementById("status");
     const rawGuessText = document.getElementById("rawGuessText");
     const cleanGuessText = document.getElementById("cleanGuessText");
-    const mapGuessText = document.getElementById("mapGuessText");
+    const mapGuessList = document.getElementById("mapGuessList");
     const truthText = document.getElementById("truthText");
     const resultMessage = document.getElementById("resultMessage");
     const confidenceNote = document.getElementById("confidenceNote");
@@ -1623,6 +1643,9 @@ def plot_unknown_classification_game_html(
     let rawGuess = null;
     let cleanGuess = null;
     let mapGuess = null;
+    let firstTransformGuess = null;
+    let firstTransformMethodId = null;
+    let transformGuesses = {{}};
     let rounds = 0;
     let studentCorrect = 0;
     let classifierCorrect = 0;
@@ -1690,14 +1713,14 @@ def plot_unknown_classification_game_html(
       return {{
         title: "Classifier Confidence Comparison",
         xaxis: {{ title: "Class" }},
-        yaxis: {{ title: "Confidence", range: [0, 1] }},
-        margin: {{ l: 64, r: 18, b: 55, t: 48 }},
+        yaxis: {{ title: "Confidence", range: [0, 1.16] }},
+        margin: {{ l: 64, r: 190, b: 55, t: 64 }},
         template: "plotly_white",
         barmode: "group",
         legend: {{
-          x: 0.99,
+          x: 1.02,
           y: 0.99,
-          xanchor: "right",
+          xanchor: "left",
           yanchor: "top",
           bgcolor: "rgba(255,255,255,0.86)",
           bordercolor: "#dddddd",
@@ -1853,6 +1876,34 @@ def plot_unknown_classification_game_html(
       }});
     }}
 
+    function markGuessSelection(label) {{
+      clearGuessSelection();
+      if (!label) return;
+      const selectedButton = [...document.querySelectorAll(".choice")].find(button => button.textContent === label);
+      if (selectedButton) selectedButton.classList.add("selected");
+    }}
+
+    function renderTransformGuesses() {{
+      mapGuessList.innerHTML = "";
+      data.transformMethods.forEach(method => {{
+        const row = document.createElement("div");
+        row.className = "guess-list-row";
+        const methodLabel = document.createElement("span");
+        methodLabel.textContent = method.label;
+        const guessValue = document.createElement("strong");
+        const guess = transformGuesses[method.id];
+        guessValue.textContent = guess || "?";
+        guessValue.className = guess ? "" : "placeholder";
+        if (method.id === firstTransformMethodId) {{
+          guessValue.classList.add("score-guess");
+          guessValue.title = "This first transform guess is used for the student score.";
+        }}
+        row.appendChild(methodLabel);
+        row.appendChild(guessValue);
+        mapGuessList.appendChild(row);
+      }});
+    }}
+
     function cloneTraces(traces) {{
       return traces.map(trace => JSON.parse(JSON.stringify(trace)));
     }}
@@ -2000,6 +2051,7 @@ def plot_unknown_classification_game_html(
           marker: {{ color: methodBarColors[methodId] || "#777777" }},
           text: prediction.probabilities.map(value => `${{(100 * value).toFixed(1)}}%`),
           textposition: "outside",
+          cliponaxis: false,
         }};
       }});
       Plotly.newPlot("confidencePlot", traces, confidenceLayout(), {{ responsive: true, displaylogo: false }});
@@ -2011,7 +2063,11 @@ def plot_unknown_classification_game_html(
     }}
 
     function updateClassifyButtonAvailability() {{
-      const canClassify = Boolean(activeSample && mapGuess && !allClassifierMethodsTested());
+      const canClassify = Boolean(
+        activeSample
+        && !allClassifierMethodsTested()
+        && (roundFinished || transformGuesses[currentTransformMethod])
+      );
       setButtonEnabled("classifySample", canClassify);
     }}
 
@@ -2023,17 +2079,18 @@ def plot_unknown_classification_game_html(
       methodNote.textContent = methodDescription(method);
       selectedCurvePanel.classList.remove("hidden");
       if (guessStage === "map") {{
+        markGuessSelection(transformGuesses[methodId]);
         if (roundFinished) {{
           updateClassifyButtonAvailability();
           guessStatus.textContent = allClassifierMethodsTested()
             ? "The true label is revealed. All classifier methods have been tested."
             : "The true label is revealed. You can still compare views and add remaining classifier methods.";
-        }} else if (mapGuess) {{
+        }} else if (transformGuesses[methodId]) {{
           updateClassifyButtonAvailability();
           guessStatus.textContent = "Click Ask Classifier to add this method to the comparison.";
         }} else {{
           setButtonEnabled("classifySample", false);
-          guessStatus.textContent = "After seeing this transform, make your final guess.";
+          guessStatus.textContent = `After seeing ${{method.label}}, make your guess.`;
         }}
       }}
 
@@ -2069,6 +2126,9 @@ def plot_unknown_classification_game_html(
       rawGuess = null;
       cleanGuess = null;
       mapGuess = null;
+      firstTransformGuess = null;
+      firstTransformMethodId = null;
+      transformGuesses = {{}};
       resetClassifierResults();
       roundFinished = false;
       clearGuessSelection();
@@ -2079,8 +2139,7 @@ def plot_unknown_classification_game_html(
       rawGuessText.classList.add("placeholder");
       cleanGuessText.textContent = "?";
       cleanGuessText.classList.add("placeholder");
-      mapGuessText.textContent = "?";
-      mapGuessText.classList.add("placeholder");
+      renderTransformGuesses();
       methodNote.textContent = "";
       resultMessage.textContent = "Reveal the true label to update the score.";
       setButtonEnabled("processSample", false);
@@ -2133,9 +2192,14 @@ def plot_unknown_classification_game_html(
         setButtonEnabled("transformSample", true);
       }} else if (guessStage === "map") {{
         mapGuess = label;
-        mapGuessText.textContent = label;
-        mapGuessText.classList.remove("placeholder");
-        guessStatus.textContent = `After transform guess: ${{label}}`;
+        transformGuesses[currentTransformMethod] = label;
+        if (!firstTransformGuess) {{
+          firstTransformGuess = label;
+          firstTransformMethodId = currentTransformMethod;
+        }}
+        renderTransformGuesses();
+        const method = methodById[currentTransformMethod];
+        guessStatus.textContent = `After ${{method.label}} guess: ${{label}}`;
         statusEl.textContent = "Now ask the classifier to classify the same sample.";
         setButtonEnabled("classifySample", true);
       }}
@@ -2175,6 +2239,7 @@ def plot_unknown_classification_game_html(
       selectedCurvePanel.classList.remove("hidden");
       plotTransformMethod("pca");
       guessStage = "map";
+      renderTransformGuesses();
       clearGuessSelection();
       setGuessButtonsEnabled(true);
       setMethodButtonsEnabled(true);
@@ -2185,7 +2250,11 @@ def plot_unknown_classification_game_html(
     }}
 
     function classifySample() {{
-      if (!activeSample || !mapGuess || allClassifierMethodsTested()) return;
+      if (
+        !activeSample
+        || allClassifierMethodsTested()
+        || (!roundFinished && !transformGuesses[currentTransformMethod])
+      ) return;
       const methodPrediction = activeSample.methodPredictions[currentTransformMethod];
       const method = methodById[currentTransformMethod];
       if (!methodPrediction || !method) return;
@@ -2225,7 +2294,7 @@ def plot_unknown_classification_game_html(
 
     function revealTruth() {{
       if (!activeSample || roundFinished) return;
-      const studentWasCorrect = mapGuess === activeSample.trueLabel;
+      const studentWasCorrect = firstTransformGuess === activeSample.trueLabel;
       const classifierWasCorrect = classifierGuess === activeSample.trueLabel;
       roundFinished = true;
       rounds += 1;
@@ -2234,13 +2303,31 @@ def plot_unknown_classification_game_html(
       updateScoreboard();
       truthText.textContent = activeSample.trueLabel;
       truthText.classList.remove("placeholder");
-      const changedGuess = rawGuess !== mapGuess || cleanGuess !== mapGuess;
-      const testedSummary = testedClassifierMethodOrder.map(methodId => {{
-        const method = methodById[methodId];
-        const prediction = testedClassifierResults[methodId];
-        return `${{method.label}}: ${{prediction.predictedLabel}}`;
-      }}).join(", ");
-      resultMessage.textContent = `Final student guess: ${{mapGuess}}. Tested classifier methods: ${{testedSummary}}. Score uses the last tested method: ${{classifierMethodLabel}} guessed ${{classifierGuess}}. You were ${{studentWasCorrect ? "correct" : "not correct"}}. The classifier was ${{classifierWasCorrect ? "correct" : "not correct"}}.${{changedGuess ? " Your guess changed as the evidence changed." : ""}}`;
+      const transformGuessValues = Object.values(transformGuesses);
+      const changedGuess = (
+        rawGuess !== firstTransformGuess
+        || cleanGuess !== firstTransformGuess
+        || new Set(transformGuessValues).size > 1
+      );
+      const correctClassifierMethods = testedClassifierMethodOrder
+        .filter(methodId => testedClassifierResults[methodId].predictedLabel === activeSample.trueLabel)
+        .map(methodId => methodById[methodId].label);
+      const incorrectClassifierMethods = testedClassifierMethodOrder
+        .filter(methodId => testedClassifierResults[methodId].predictedLabel !== activeSample.trueLabel)
+        .map(methodId => methodById[methodId].label);
+      const correctSummary = correctClassifierMethods.length > 0
+        ? correctClassifierMethods.join(", ")
+        : "none";
+      const incorrectSummary = incorrectClassifierMethods.length > 0
+        ? incorrectClassifierMethods.join(", ")
+        : "none";
+      const firstMethodLabel = methodById[firstTransformMethodId]?.label || "first transform";
+      resultMessage.textContent = [
+        `Score-counting student guess: ${{firstTransformGuess}} (${{firstMethodLabel}}). You were ${{studentWasCorrect ? "correct" : "not correct"}}.`,
+        `Correct classifier methods: ${{correctSummary}}.`,
+        `Incorrect classifier methods: ${{incorrectSummary}}.`,
+        changedGuess ? "Your guess changed as the evidence changed." : "",
+      ].filter(Boolean).join("\\n");
       statusEl.textContent = "Round complete. Try another mystery sample.";
       setButtonEnabled("revealTruth", false);
       setButtonEnabled("classifySample", !allClassifierMethodsTested());
