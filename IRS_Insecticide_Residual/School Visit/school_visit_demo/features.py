@@ -6,6 +6,19 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from IRS_Insecticide_Residual.Feature_Implementation.Functions.Feature_Extraction import (
+    extract_combined_features,
+)
+
+from .config import DOWNSAMPLE_STEP
+
+
+ORIGINAL_BAND_EDGES = ((0, 1000), (1000, 1750), (1750, 2700))
+BAND_EDGES = [
+    (start // DOWNSAMPLE_STEP, end // DOWNSAMPLE_STEP)
+    for start, end in ORIGINAL_BAND_EDGES
+]
+
 
 @dataclass(frozen=True)
 class DemoFeatures:
@@ -14,12 +27,12 @@ class DemoFeatures:
     feature_table: pd.DataFrame
 
 
-def extract_demo_features(
+def extract_simple_demo_features(
     x_all: np.ndarray,
     y_all: np.ndarray,
     channel_names: Sequence[str],
 ) -> DemoFeatures:
-    """Extract compact, explainable features from each signal channel."""
+    """Extract compact, easy-to-explain features from each signal channel."""
     x_all = np.asarray(x_all, dtype=np.float32)
     y_all = np.asarray(y_all)
     if x_all.ndim != 3:
@@ -32,7 +45,7 @@ def extract_demo_features(
     feature_blocks = []
     feature_names: list[str] = []
     for channel_idx, channel_name in enumerate(channel_names):
-        block, names = _channel_features(x_all[:, channel_idx, :], str(channel_name))
+        block, names = _simple_channel_features(x_all[:, channel_idx, :], str(channel_name))
         feature_blocks.append(block)
         feature_names.extend(names)
 
@@ -46,6 +59,67 @@ def extract_demo_features(
     )
 
 
+def extract_complex_demo_features(
+    x_all: np.ndarray,
+    y_all: np.ndarray,
+    channel_names: Sequence[str],
+) -> DemoFeatures:
+    """Extract full manual features using the main Feature_Implementation pipeline."""
+    x_all = np.asarray(x_all, dtype=np.float32)
+    y_all = np.asarray(y_all)
+    if x_all.ndim != 3:
+        raise ValueError(f"x_all must have shape [N, C, L], got {x_all.shape}")
+    if x_all.shape[0] != y_all.shape[0]:
+        raise ValueError("x_all and y_all must contain the same number of samples")
+    if len(channel_names) != x_all.shape[1]:
+        raise ValueError("channel_names must match the number of signal channels")
+
+    resolved_channel_names = tuple(str(name) for name in channel_names)
+    signal_channel_index = resolved_channel_names.index("processed_signal")
+    first_derivative_channel_index = resolved_channel_names.index("first_difference")
+    second_derivative_channel_index = resolved_channel_names.index("second_difference")
+
+    x_features, feature_names, _metadata = extract_combined_features(
+        x_signal=x_all,
+        band_edges=BAND_EDGES,
+        channel_names=resolved_channel_names,
+        signal_channel_index=signal_channel_index,
+        first_derivative_channel_index=first_derivative_channel_index,
+        second_derivative_channel_index=second_derivative_channel_index,
+        peak_selection="amplitude",
+        dip_selection="amplitude",
+        min_prominence_frac=0.20,
+        min_distance=1,
+        min_width=1,
+        percentile_method="histogram",
+        general_peak_rel_height=0.5,
+        main_peak_rel_height=0.9,
+        dip_rel_height=0.5,
+        derivative_window_radius=5,
+        include_area_features=True,
+        include_inter_band=True,
+        include_broad_transition=True,
+        include_second_derivative=True,
+    )
+
+    feature_table = pd.DataFrame(x_features, columns=feature_names)
+    feature_table.insert(0, "label", y_all)
+    return DemoFeatures(
+        x_features=x_features,
+        feature_names=feature_names,
+        feature_table=feature_table,
+    )
+
+
+def extract_demo_features(
+    x_all: np.ndarray,
+    y_all: np.ndarray,
+    channel_names: Sequence[str],
+) -> DemoFeatures:
+    """Backward-compatible name for the full manual feature extractor."""
+    return extract_complex_demo_features(x_all, y_all, channel_names)
+
+
 def feature_examples_table(
     feature_table: pd.DataFrame,
     class_order: Sequence[str],
@@ -57,8 +131,10 @@ def feature_examples_table(
         "processed_signal__mean",
         "processed_signal__std",
         "processed_signal__peak_to_peak",
-        "processed_signal__peak_position",
-        "first_difference__energy",
+        "processed_signal__argmax_frac",
+        "processed_signal__band1_main_peak_amp",
+        "processed_signal__band2_main_peak_amp",
+        "processed_signal__derivative__band1_main_peak_left_slope",
     ]
     available_columns = [name for name in compact_columns if name in feature_table.columns]
 
@@ -73,7 +149,10 @@ def feature_examples_table(
     return out
 
 
-def _channel_features(channel_values: np.ndarray, channel_name: str) -> tuple[np.ndarray, list[str]]:
+def _simple_channel_features(
+    channel_values: np.ndarray,
+    channel_name: str,
+) -> tuple[np.ndarray, list[str]]:
     values = np.asarray(channel_values, dtype=np.float32)
     signal_length = values.shape[1]
     x_axis = np.linspace(0.0, 1.0, signal_length, dtype=np.float32)

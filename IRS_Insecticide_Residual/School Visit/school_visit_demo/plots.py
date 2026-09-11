@@ -960,38 +960,39 @@ def _plotly_3d_scatter(
 
 
 def plot_classifier_result_comparison(
-    knn_result: DemoClassificationResult,
+    pca_result: DemoClassificationResult,
+    simple_feature_result: DemoClassificationResult,
+    complex_feature_result: DemoClassificationResult,
     cnn_result: DemoClassificationResult,
     output_path: Path,
 ) -> Path:
-    fig, axes = plt.subplots(
-        1,
-        3,
-        figsize=(16, 5.3),
-        gridspec_kw={"width_ratios": [1.0, 1.0, 0.72]},
-    )
+    method_results = [
+        ("PCA Feature", pca_result, "#9B51E0"),
+        ("Simple Feature", simple_feature_result, "#F2994A"),
+        ("Complex Feature", complex_feature_result, "#27AE60"),
+        ("CNN Feature", cnn_result, "#2F80ED"),
+    ]
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10.2))
 
-    _plot_confusion_matrix_recall(
-        axes[0],
-        confusion_count=knn_result.confusion_count,
-        class_order=knn_result.class_order,
-        title=f"Original accuracy: {knn_result.test_accuracy:.3f}",
-    )
-    _plot_confusion_matrix_recall(
-        axes[1],
-        confusion_count=cnn_result.confusion_count,
-        class_order=cnn_result.class_order,
-        title=f"CNN accuracy: {cnn_result.test_accuracy:.3f}",
-    )
+    for ax, (name, method_result, _color) in zip(axes.ravel()[:4], method_results):
+        _plot_confusion_matrix_recall(
+            ax,
+            confusion_count=method_result.confusion_count,
+            class_order=method_result.class_order,
+            title=f"{name}: {method_result.test_accuracy:.3f}",
+        )
 
-    names = ["Original", "CNN"]
-    accuracies = [knn_result.test_accuracy, cnn_result.test_accuracy]
-    bars = axes[2].bar(names, accuracies, color=["#777777", "#2F80ED"])
-    axes[2].set_ylim(0.0, 1.0)
-    axes[2].set_ylabel("Holdout accuracy")
-    axes[2].set_title("Accuracy")
+    names = [name for name, _result, _color in method_results]
+    accuracies = [method_result.test_accuracy for _name, method_result, _color in method_results]
+    colors = [color for _name, _result, color in method_results]
+    accuracy_ax = axes.ravel()[4]
+    bars = accuracy_ax.bar(names, accuracies, color=colors)
+    accuracy_ax.set_ylim(0.0, 1.0)
+    accuracy_ax.set_ylabel("Holdout accuracy")
+    accuracy_ax.set_title("Accuracy")
+    accuracy_ax.tick_params(axis="x", rotation=20)
     for bar, accuracy in zip(bars, accuracies):
-        axes[2].text(
+        accuracy_ax.text(
             bar.get_x() + bar.get_width() / 2,
             accuracy + 0.025,
             f"{accuracy:.3f}",
@@ -1000,7 +1001,9 @@ def plot_classifier_result_comparison(
             fontsize=10,
         )
 
-    fig.suptitle("7. Classifier Results: Original vs CNN")
+    axes.ravel()[5].axis("off")
+    fig.suptitle("7. Classifier Results: Four Feature Views")
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     return _save(fig, output_path)
 
 
@@ -1129,8 +1132,8 @@ def plot_unknown_classification_game_html(
     processed_by_class: dict[str, pd.DataFrame],
     result: DemoClassificationResult,
     output_path: Path,
-    no_transform_result: DemoClassificationResult | None = None,
     simple_feature_result: DemoClassificationResult | None = None,
+    complex_feature_result: DemoClassificationResult | None = None,
     pca_result: DemoClassificationResult | None = None,
     max_unknown_candidates_per_class: int = 4,
     max_clickable_references_per_class: int = 50,
@@ -1139,14 +1142,14 @@ def plot_unknown_classification_game_html(
 
     transform_methods, transform_map_lookup_by_method = _build_game_transform_method_payloads(
         result=result,
-        no_transform_result=no_transform_result,
         simple_feature_result=simple_feature_result,
+        complex_feature_result=complex_feature_result,
         pca_result=pca_result,
     )
     prediction_lookup_by_method = _build_game_prediction_lookup_by_method(
         cnn_result=result,
-        no_transform_result=no_transform_result,
         simple_feature_result=simple_feature_result,
+        complex_feature_result=complex_feature_result,
         pca_result=pca_result,
     )
     unknown_samples = _build_unknown_candidate_payloads(
@@ -1348,14 +1351,14 @@ def plot_unknown_classification_game_html(
       padding: 14px;
     }}
     .method-buttons {{
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       gap: 10px;
       margin-bottom: 8px;
     }}
     button.method-choice {{
-      min-width: 132px;
       font-weight: 700;
+      text-align: center;
       background: var(--method-bg, var(--panel));
       border-color: var(--method-color, var(--line));
       color: var(--method-color, var(--ink));
@@ -1570,9 +1573,9 @@ def plot_unknown_classification_game_html(
     const data = {json.dumps(payload)};
     const classColors = {json.dumps({display_class_label(label): color for label, color in CLASS_COLORS.items()})};
     const methodBarColors = {{
-      none: "#7A7A7A",
-      simple: "#F2994A",
       pca: "#9B51E0",
+      simple: "#F2994A",
+      complex: "#27AE60",
       cnn: "#2F80ED",
     }};
     const samplePanel = document.getElementById("samplePanel");
@@ -1608,7 +1611,7 @@ def plot_unknown_classification_game_html(
     let studentCorrect = 0;
     let classifierCorrect = 0;
     let roundFinished = false;
-    let currentTransformMethod = "none";
+    let currentTransformMethod = "pca";
     let classifierGuess = null;
     let classifierMethodLabel = null;
     let testedClassifierResults = {{}};
@@ -1621,13 +1624,14 @@ def plot_unknown_classification_game_html(
     );
 
     function methodDescription(method) {{
+      const baseDescription = `${{method.intuitiveDescription}} ${{method.technicalDescription}}`;
       if (
         testedClassifierResults[method.id]
         && Number.isFinite(method.testAccuracy)
       ) {{
-        return `${{method.description}} Overall classifier accuracy on held-out examples: ${{(100 * method.testAccuracy).toFixed(1)}}%.`;
+        return `${{baseDescription}} Overall classifier accuracy on held-out examples: ${{(100 * method.testAccuracy).toFixed(1)}}%.`;
       }}
-      return method.description;
+      return baseDescription;
     }}
 
     function signalLayout(title, xTitle, yTitle) {{
@@ -1643,17 +1647,6 @@ def plot_unknown_classification_game_html(
     function patternLayout() {{
       return {{
         title: "Compare with known clean patterns",
-        xaxis: {{ title: "Processed measurement point" }},
-        yaxis: {{ title: "Processed response" }},
-        margin: {{ l: 64, r: 18, b: 55, t: 48 }},
-        template: "plotly_white",
-        legend: {{ orientation: "v" }},
-      }};
-    }}
-
-    function noTransformLayout() {{
-      return {{
-        title: "No Transform: Cleaned Signal",
         xaxis: {{ title: "Processed measurement point" }},
         yaxis: {{ title: "Processed response" }},
         margin: {{ l: 64, r: 18, b: 55, t: 48 }},
@@ -1773,6 +1766,7 @@ def plot_unknown_classification_game_html(
         const button = document.createElement("button");
         button.type = "button";
         button.className = "method-choice";
+        button.dataset.methodId = method.id;
         button.textContent = method.label;
         const color = methodBarColors[method.id] || "#777777";
         button.style.setProperty("--method-color", color);
@@ -1785,7 +1779,7 @@ def plot_unknown_classification_game_html(
 
     function markSelectedMethod(methodId) {{
       document.querySelectorAll(".method-choice").forEach(button => {{
-        const selected = methodById[methodId] && button.textContent === methodById[methodId].label;
+        const selected = button.dataset.methodId === methodId;
         button.classList.toggle("selected", selected);
       }});
     }}
@@ -2025,17 +2019,6 @@ def plot_unknown_classification_game_html(
         }}
       }}
 
-      if (method.plotKind === "curve") {{
-        Plotly.newPlot(
-          "featurePlot3d",
-          classPatternTraces(activeSample),
-          noTransformLayout(),
-          {{ responsive: true, displaylogo: false }}
-        );
-        showSelectedCurve(activeSample, "Current curve: mystery sample", "#111111", "mystery sample");
-        return;
-      }}
-
       clearSelectedCurve();
       selectedCurveNote.textContent = "Click an open square or the black mystery marker to inspect its cleaned curve.";
       Plotly.newPlot(
@@ -2062,8 +2045,8 @@ def plot_unknown_classification_game_html(
       purgePlotIfDrawn("processedPlot");
       purgePlotIfDrawn("patternPlot");
       purgePlotIfDrawn("featurePlot3d");
-      currentTransformMethod = "none";
-      markSelectedMethod("none");
+      currentTransformMethod = "pca";
+      markSelectedMethod("pca");
       guessStage = null;
       rawGuess = null;
       cleanGuess = null;
@@ -2172,7 +2155,7 @@ def plot_unknown_classification_game_html(
       if (!activeSample || !cleanGuess) return;
       featurePanel.classList.remove("hidden");
       selectedCurvePanel.classList.remove("hidden");
-      plotTransformMethod("none");
+      plotTransformMethod("pca");
       guessStage = "map";
       clearGuessSelection();
       setGuessButtonsEnabled(true);
@@ -2312,57 +2295,22 @@ def _build_class_pattern_payloads(
 
 def _build_game_transform_method_payloads(
     result: DemoClassificationResult,
-    no_transform_result: DemoClassificationResult | None,
     simple_feature_result: DemoClassificationResult | None,
+    complex_feature_result: DemoClassificationResult | None,
     pca_result: DemoClassificationResult | None,
 ) -> tuple[list[dict[str, object]], dict[str, dict[int, np.ndarray]]]:
-    methods: list[dict[str, object]] = [
-        {
-            "id": "none",
-            "label": "No Transform",
-            "plotKind": "curve",
-            "testAccuracy": (
-                None
-                if no_transform_result is None
-                else float(no_transform_result.test_accuracy)
-            ),
-            "description": "Keep the cleaned signal as a curve. This is hard to view because we still compare shapes by eye.",
-        }
-    ]
+    methods: list[dict[str, object]] = []
     map_lookup_by_method: dict[str, dict[int, np.ndarray]] = {}
-
-    if simple_feature_result is not None:
-        methods.append(
-            {
-                "id": "simple",
-                "label": "Manual Features",
-                "plotKind": "map",
-                "testAccuracy": float(simple_feature_result.test_accuracy),
-                "description": "Measure each signal with simple numbers, such as its average level, range, peak size, total area, and where peaks happen. Then place samples with similar numbers near each other.",
-                "baseTraces": _plotly_3d_feature_traces_from_arrays(
-                    class_order=simple_feature_result.class_order,
-                    x_train_map_3d=simple_feature_result.x_train_map_3d,
-                    x_test_map_3d=simple_feature_result.x_test_map_3d,
-                    y_train=simple_feature_result.y_train,
-                    y_test=simple_feature_result.y_test,
-                ),
-            }
-        )
-        map_lookup_by_method["simple"] = _build_3d_map_lookup_by_global_index(
-            train_indices=simple_feature_result.train_indices,
-            x_train_map_3d=simple_feature_result.x_train_map_3d,
-            test_indices=simple_feature_result.test_indices,
-            x_test_map_3d=simple_feature_result.x_test_map_3d,
-        )
 
     if pca_result is not None:
         methods.append(
             {
                 "id": "pca",
-                "label": "PCA",
+                "label": "PCA Feature",
                 "plotKind": "map",
                 "testAccuracy": float(pca_result.test_accuracy),
-                "description": "Compress the full processed signal into three map coordinates without learning class-specific patterns.",
+                "intuitiveDescription": "Turn the whole cleaned curve into a point on a map, keeping the biggest overall differences.",
+                "technicalDescription": "PCA projects the scaled processed signal into three principal-component coordinates, then KNN classifies those coordinates.",
                 "baseTraces": _plotly_3d_feature_traces_from_arrays(
                     class_order=pca_result.class_order,
                     x_train_map_3d=pca_result.x_train_map_3d,
@@ -2379,13 +2327,64 @@ def _build_game_transform_method_payloads(
             x_test_map_3d=pca_result.x_test_map_3d,
         )
 
+    if simple_feature_result is not None:
+        methods.append(
+            {
+                "id": "simple",
+                "label": "Simple Feature",
+                "plotKind": "map",
+                "testAccuracy": float(simple_feature_result.test_accuracy),
+                "intuitiveDescription": "Measure each curve with a small set of easy clues, like height, spread, area, and peak position.",
+                "technicalDescription": "A KNN classifier uses compact global summary features extracted from each processed signal channel.",
+                "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                    class_order=simple_feature_result.class_order,
+                    x_train_map_3d=simple_feature_result.x_train_map_3d,
+                    x_test_map_3d=simple_feature_result.x_test_map_3d,
+                    y_train=simple_feature_result.y_train,
+                    y_test=simple_feature_result.y_test,
+                ),
+            }
+        )
+        map_lookup_by_method["simple"] = _build_3d_map_lookup_by_global_index(
+            train_indices=simple_feature_result.train_indices,
+            x_train_map_3d=simple_feature_result.x_train_map_3d,
+            test_indices=simple_feature_result.test_indices,
+            x_test_map_3d=simple_feature_result.x_test_map_3d,
+        )
+
+    if complex_feature_result is not None:
+        methods.append(
+            {
+                "id": "complex",
+                "label": "Complex Feature",
+                "plotKind": "map",
+                "testAccuracy": float(complex_feature_result.test_accuracy),
+                "intuitiveDescription": "Measure the curve with more detailed clues, including peaks, dips, valleys, and how sharply it changes.",
+                "technicalDescription": "The more complex extractor builds global, peak-dip, area, and derivative features before KNN classification.",
+                "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                    class_order=complex_feature_result.class_order,
+                    x_train_map_3d=complex_feature_result.x_train_map_3d,
+                    x_test_map_3d=complex_feature_result.x_test_map_3d,
+                    y_train=complex_feature_result.y_train,
+                    y_test=complex_feature_result.y_test,
+                ),
+            }
+        )
+        map_lookup_by_method["complex"] = _build_3d_map_lookup_by_global_index(
+            train_indices=complex_feature_result.train_indices,
+            x_train_map_3d=complex_feature_result.x_train_map_3d,
+            test_indices=complex_feature_result.test_indices,
+            x_test_map_3d=complex_feature_result.x_test_map_3d,
+        )
+
     methods.append(
         {
             "id": "cnn",
-            "label": "CNN",
+            "label": "CNN Feature",
             "plotKind": "map",
             "testAccuracy": float(result.test_accuracy),
-            "description": "Let the CNN learn useful signal patterns first, then map the learned features into three coordinates.",
+            "intuitiveDescription": "Let the computer learn its own clues from many examples instead of hand-picking the measurements.",
+            "technicalDescription": "A CNN slides small filters along the signal to learn local patterns and combine them into stronger clues; its learned features are then mapped into 3D with PCA.",
             "baseTraces": _plotly_3d_feature_traces_from_arrays(
                 class_order=result.class_order,
                 x_train_map_3d=result.x_train_map_3d,
@@ -2433,14 +2432,14 @@ def _map_points_for_global_index(
 
 def _build_game_prediction_lookup_by_method(
     cnn_result: DemoClassificationResult,
-    no_transform_result: DemoClassificationResult | None,
     simple_feature_result: DemoClassificationResult | None,
+    complex_feature_result: DemoClassificationResult | None,
     pca_result: DemoClassificationResult | None,
 ) -> dict[str, dict[int, dict[str, object]]]:
     method_results = {
-        "none": no_transform_result if no_transform_result is not None else cnn_result,
-        "simple": simple_feature_result,
         "pca": pca_result,
+        "simple": simple_feature_result,
+        "complex": complex_feature_result,
         "cnn": cnn_result,
     }
     lookups: dict[str, dict[int, dict[str, object]]] = {}

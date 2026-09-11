@@ -13,7 +13,7 @@ load insecticide residual data
 -> clean/process the signals
 -> compare processed class averages before and after slicing
 -> show PCA feature maps before and after CNN feature learning
--> compare Original and CNN classification results
+-> compare PCA, simple-feature, complex-feature, and CNN-feature classification results
 -> classify a student-selected unknown example
 ```
 
@@ -42,10 +42,10 @@ random_seed = RANDOM_SEED
 `excel_path = None` checks the usual lab data path and the
 `IRS_SCHOOL_VISIT_DATA_PATH` environment variable.
 
-The script trains both classifiers. The original manually designed feature
-classifier is used for comparison in figure `07`; the CNN from
-`Raw_Data_Implementation` is used for the feature maps and the final
-unknown-sample prediction.
+The script trains four demonstration classifiers: PCA Feature, Simple Feature,
+Complex Feature, and CNN Feature. The CNN from `Raw_Data_Implementation` is
+used for the learned feature maps and the final static unknown-sample
+prediction.
 
 The CNN settings are also editable near the top of `run_demo.py`, for example
 `cnn_epochs`, `cnn_batch_size`, `cnn_model_name`, and `cnn_n_splits`.
@@ -64,8 +64,8 @@ Outputs are written to `outputs/`:
 - `08_unknown_classification_game.html`
 
 Figure `07` reports row-normalized recall percentages in the confusion
-matrices. The label `Original` refers to the manually designed feature
-classifier. The label `CNN` refers to the learned signal-feature classifier.
+matrices for the four feature views: PCA Feature, Simple Feature, Complex
+Feature, and CNN Feature.
 
 For the school-visit display, the original dataset labels are renamed:
 `LOW` is shown as `Purified Water`, `TARGET` is shown as `Tap Water`, and
@@ -80,11 +80,14 @@ Sample` shows the cleaned signal and a known-pattern comparison, using class
 average curves and usual-range bands. Students can then guess again from the
 cleaner evidence.
 `Transform Sample` lets students choose
-between four views of the same sample: `No Transform`, `Manual Features`, `PCA`,
-and `CNN`. The map-based views use a 3D similarity map so students can compare
-whether different transformations make the classes cluster more clearly.
-`Manual Features` means simple signal measurements such as average level, range,
-peak size, total area, and where peaks happen. A
+between four views of the same sample: `PCA Feature`, `Simple Feature`,
+`Complex Feature`, and `CNN Feature`. Each method button gives one intuitive
+sentence and one technical sentence. The map-based views use a 3D similarity
+map so students can compare whether different transformations make the classes
+cluster more clearly. `Simple Feature` uses compact whole-curve summary
+measurements. `Complex Feature` uses the full manual feature extractor from
+`Feature_Implementation`: whole-curve summaries, peak-and-dip shape
+measurements, area measurements, and derivative-change measurements. A
 selected set of 150 known map points is clickable; when students click one of
 these points, the corresponding cleaned signal curve is shown beside the map.
 The mystery sample marker is clickable too. After that, students can choose a
