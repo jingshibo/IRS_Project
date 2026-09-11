@@ -7,7 +7,7 @@ The demonstration story is:
 
 ```text
 load insecticide residual data
--> show multiple individual raw LOW / TARGET / HIGH measurements
+-> show multiple individual raw Purified Water / Tap Water / Dirty Water measurements
 -> overlap the same raw samples to show small class differences and noise
 -> show abnormal spike examples and the same signals after spike removal
 -> clean/process the signals
@@ -67,12 +67,18 @@ Figure `07` reports row-normalized recall percentages in the confusion
 matrices. The label `Original` refers to the manually designed feature
 classifier. The label `CNN` refers to the learned signal-feature classifier.
 
+For the school-visit display, the original dataset labels are renamed:
+`LOW` is shown as `Purified Water`, `TARGET` is shown as `Tap Water`, and
+`HIGH` is shown as `Dirty Water`. This is only a display change; the underlying
+data loading and model training still use the original labels.
+
 The interactive unknown-sample game embeds a balanced pool of 12 mystery
 holdout samples, with 4 samples from each class and a mix of easier and harder
 examples. Students choose an anonymous item from the mystery sample list, then
-guess LOW, TARGET, or HIGH from the raw signal. `Process Sample` shows the
-cleaned signal and a known-pattern comparison, using class average curves and
-usual-range bands. Students can then guess again from the cleaner evidence.
+guess Purified Water, Tap Water, or Dirty Water from the raw signal. `Process
+Sample` shows the cleaned signal and a known-pattern comparison, using class
+average curves and usual-range bands. Students can then guess again from the
+cleaner evidence.
 `Transform Sample` lets students choose
 between four views of the same sample: `No Transform`, `Manual Features`, `PCA`,
 and `CNN`. The map-based views use a 3D similarity map so students can compare

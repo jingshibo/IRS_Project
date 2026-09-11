@@ -35,6 +35,7 @@ from school_visit_demo.data_pipeline import (
 )
 from school_visit_demo.features import extract_demo_features
 from school_visit_demo.plots import (
+    display_class_label,
     find_abnormal_spike_examples,
     plot_classifier_result_comparison,
     plot_cnn_feature_learning_comparison,
@@ -100,13 +101,13 @@ log("Reading the Excel file can take 20-60 seconds on some machines...")
 raw_sample_count = sum(len(data) for data in raw_by_class.values())
 log(f"Data file: {data_path}")
 log(f"Label column: {resolved_label_col}")
-log(f"Classes: {', '.join(class_order)}")
+log(f"Display classes: {', '.join(display_class_label(label) for label in class_order)}")
 log(f"Raw samples: {raw_sample_count}")
 if removed_zero_sample_indices:
     log(f"Removed all-zero rows: {removed_zero_sample_indices}")
 
 
-## show individual raw LOW / TARGET / HIGH measurements separately
+## show individual raw Purified Water / Tap Water / Dirty Water measurements separately
 raw_sample_indices = select_raw_sample_indices(
     raw_by_class,
     class_order,
@@ -121,7 +122,7 @@ individual_raw_path = plot_individual_raw_signal_subplots(
 log_saved(individual_raw_path)
 
 
-## overlap raw LOW / TARGET / HIGH signals
+## overlap raw Purified Water / Tap Water / Dirty Water signals
 raw_signal_path = plot_raw_signals(
     raw_by_class,
     class_order,
@@ -150,7 +151,7 @@ log_saved(spike_removal_path)
 for spike_example in spike_examples:
     log(
         "Spike example: "
-        f"{spike_example['label']} sample {spike_example['sample_idx']}, "
+        f"{display_class_label(str(spike_example['label']))} sample {spike_example['sample_idx']}, "
         f"measurement point {spike_example['point_idx']}, "
         f"raw {spike_example['raw_value']:.1f} -> "
         f"after removal {spike_example['despiked_value']:.1f}"
@@ -318,11 +319,11 @@ log(f"No Transform holdout accuracy: {no_transform_classification.test_accuracy:
 log(f"Original holdout accuracy: {knn_classification.test_accuracy:.3f}")
 log(f"PCA holdout accuracy: {pca_classification.test_accuracy:.3f}")
 log(f"CNN holdout accuracy: {cnn_classification.test_accuracy:.3f}")
-log(f"Unknown example true label: {classification.unknown_true_label}")
-log(f"Unknown example prediction: {classification.unknown_pred_label}")
+log(f"Unknown example true label: {display_class_label(classification.unknown_true_label)}")
+log(f"Unknown example prediction: {display_class_label(classification.unknown_pred_label)}")
 log("Unknown example confidence:")
 for label, probability in zip(classification.class_order, classification.unknown_prob):
-    log(f"  {label}: {probability:.3f}")
+    log(f"  {display_class_label(label)}: {probability:.3f}")
 
 log("\nSaved outputs:")
 for path in figure_paths:

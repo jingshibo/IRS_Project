@@ -23,6 +23,21 @@ CLASS_COLORS = {
     "TARGET": "#27AE60",
     "HIGH": "#EB5757",
 }
+STD_BAND_ALPHA = 0.26
+
+CLASS_DISPLAY_LABELS = {
+    "LOW": "Purified Water",
+    "TARGET": "Tap Water",
+    "HIGH": "Dirty Water",
+}
+
+
+def display_class_label(label: str) -> str:
+    return CLASS_DISPLAY_LABELS.get(str(label), str(label))
+
+
+def display_class_order(class_order: Sequence[str]) -> list[str]:
+    return [display_class_label(label) for label in class_order]
 
 
 def select_raw_sample_indices(
@@ -156,7 +171,7 @@ def plot_spike_removal_examples(
             zorder=5,
             label="removed spike",
         )
-        raw_ax.set_title(f"{label} sample {sample_idx}: raw measurement")
+        raw_ax.set_title(f"{display_class_label(label)} sample {sample_idx}: raw measurement")
         raw_ax.set_ylabel("Sensor response")
 
         clean_ax.plot(
@@ -166,7 +181,7 @@ def plot_spike_removal_examples(
             linewidth=1.8,
             label="after spike removal",
         )
-        clean_ax.set_title(f"{label} sample {sample_idx}: after spike removal")
+        clean_ax.set_title(f"{display_class_label(label)} sample {sample_idx}: after spike removal")
         clean_ax.set_ylabel("Sensor response")
 
         if row_idx == 0:
@@ -217,7 +232,7 @@ def plot_individual_raw_signal_subplots(
             sample_idx = int(sample_indices[col_idx])
             selected.append(values[sample_idx])
             ax.plot(values[sample_idx], color=color, linewidth=1.2)
-            ax.set_title(f"{label} sample {sample_idx}", fontsize=9)
+            ax.set_title(f"{display_class_label(label)} sample {sample_idx}", fontsize=9)
             ax.tick_params(labelsize=8)
             if col_idx == 0:
                 ax.set_ylabel("Sensor response")
@@ -272,7 +287,7 @@ def plot_raw_signals(
             values[sample_indices].mean(axis=0),
             color=color,
             linewidth=2.3,
-            label=f"{label} average",
+            label=f"{display_class_label(label)} average",
         )
 
     axes[0].set_title("Noisy individual raw measurements")
@@ -339,8 +354,14 @@ def plot_processed_class_average_before_after_slicing(
             std = values.std(axis=0)
             x_axis = np.arange(values.shape[1])
             color = CLASS_COLORS.get(label, "#777777")
-            ax.plot(x_axis, mean, color=color, linewidth=2.2, label=label)
-            ax.fill_between(x_axis, mean - std, mean + std, color=color, alpha=0.15)
+            ax.plot(x_axis, mean, color=color, linewidth=2.2, label=display_class_label(label))
+            ax.fill_between(
+                x_axis,
+                mean - std,
+                mean + std,
+                color=color,
+                alpha=STD_BAND_ALPHA,
+            )
 
         ax.set_title(title)
         ax.set_xlabel(x_label)
@@ -446,8 +467,14 @@ def plot_processing_comparison(
             std = values.std(axis=0)
             x_axis = np.arange(values.shape[1])
             color = CLASS_COLORS.get(label, None)
-            ax.plot(x_axis, mean, color=color, linewidth=2.0, label=label)
-            ax.fill_between(x_axis, mean - std, mean + std, color=color, alpha=0.15)
+            ax.plot(x_axis, mean, color=color, linewidth=2.0, label=display_class_label(label))
+            ax.fill_between(
+                x_axis,
+                mean - std,
+                mean + std,
+                color=color,
+                alpha=STD_BAND_ALPHA,
+            )
         ax.set_title(title)
         ax.set_xlabel("Measurement point")
         ax.set_ylabel(y_label)
@@ -475,7 +502,7 @@ def plot_feature_map(
             s=38,
             color=color,
             alpha=0.55,
-            label=f"{label} known",
+            label=f"{display_class_label(label)} known",
         )
         ax.scatter(
             result.x_test_map[test_mask, 0],
@@ -484,7 +511,7 @@ def plot_feature_map(
             facecolor="none",
             edgecolor=color,
             linewidth=1.5,
-            label=f"{label} test",
+            label=f"{display_class_label(label)} test",
         )
 
     if show_unknown:
@@ -655,7 +682,7 @@ def plot_feature_map_3d_interactive_html(
             _plotly_3d_scatter(
                 go=go,
                 points=result.x_train_map_3d[train_mask],
-                name=f"{label} known",
+                name=f"{display_class_label(label)} known",
                 color=color,
                 opacity=0.42,
                 size=4,
@@ -666,7 +693,7 @@ def plot_feature_map_3d_interactive_html(
             _plotly_3d_scatter(
                 go=go,
                 points=result.x_test_map_3d[test_mask],
-                name=f"{label} test",
+                name=f"{display_class_label(label)} test",
                 color=color,
                 opacity=0.95,
                 size=5,
@@ -813,7 +840,7 @@ def _plot_3d_feature_points(
             s=28,
             color=color,
             alpha=0.42,
-            label=f"{label} known",
+            label=f"{display_class_label(label)} known",
         )
         ax.scatter(
             x_test_map_3d[test_mask, 0],
@@ -823,7 +850,7 @@ def _plot_3d_feature_points(
             facecolor="none",
             edgecolor=color,
             linewidth=1.3,
-            label=f"{label} test",
+            label=f"{display_class_label(label)} test",
         )
 
     if show_unknown:
@@ -863,7 +890,7 @@ def _add_plotly_3d_feature_points(
             _plotly_3d_scatter(
                 go=go,
                 points=x_train_map_3d[train_mask],
-                name=f"{label} known",
+                name=f"{display_class_label(label)} known",
                 color=color,
                 opacity=0.42,
                 size=4,
@@ -877,7 +904,7 @@ def _add_plotly_3d_feature_points(
             _plotly_3d_scatter(
                 go=go,
                 points=x_test_map_3d[test_mask],
-                name=f"{label} test",
+                name=f"{display_class_label(label)} test",
                 color=color,
                 opacity=0.95,
                 size=5,
@@ -1009,8 +1036,8 @@ def _plot_confusion_matrix_recall(
 
     ax.set_xticks(np.arange(len(class_order)))
     ax.set_yticks(np.arange(len(class_order)))
-    ax.set_xticklabels(class_order, rotation=35, ha="right")
-    ax.set_yticklabels(class_order)
+    ax.set_xticklabels(display_class_order(class_order), rotation=35, ha="right")
+    ax.set_yticklabels(display_class_order(class_order))
     ax.set_xlabel("Predicted class")
     ax.set_ylabel("True class")
     ax.set_title(title)
@@ -1038,7 +1065,7 @@ def _plot_2d_feature_points(
             s=30,
             color=color,
             alpha=0.46,
-            label=f"{label} known",
+            label=f"{display_class_label(label)} known",
         )
         ax.scatter(
             x_test_map[test_mask, 0],
@@ -1047,7 +1074,7 @@ def _plot_2d_feature_points(
             facecolor="none",
             edgecolor=color,
             linewidth=1.3,
-            label=f"{label} test",
+            label=f"{display_class_label(label)} test",
         )
 
     if show_unknown:
@@ -1085,14 +1112,14 @@ def plot_unknown_prediction(
     bar_colors = [CLASS_COLORS.get(label, "#777777") for label in result.class_order]
     axes[1].bar(x_pos, result.unknown_prob, color=bar_colors)
     axes[1].set_xticks(x_pos)
-    axes[1].set_xticklabels(result.class_order)
+    axes[1].set_xticklabels(display_class_order(result.class_order))
     axes[1].set_ylim(0.0, 1.0)
     axes[1].set_ylabel("Classifier confidence")
-    axes[1].set_title(f"Prediction: {result.unknown_pred_label}")
+    axes[1].set_title(f"Prediction: {display_class_label(result.unknown_pred_label)}")
 
     fig.suptitle(
         f"8. Classifying an Unknown Example "
-        f"(true label: {result.unknown_true_label})"
+        f"(true label: {display_class_label(result.unknown_true_label)})"
     )
     return _save(fig, output_path)
 
@@ -1141,7 +1168,7 @@ def plot_unknown_classification_game_html(
         transform_map_lookup_by_method=transform_map_lookup_by_method,
     )
     payload = {
-        "classOrder": list(result.class_order),
+        "classOrder": display_class_order(result.class_order),
         "unknownSamples": unknown_samples,
         "classPatterns": class_patterns,
         "referenceSamples": reference_samples,
@@ -1541,7 +1568,7 @@ def plot_unknown_classification_game_html(
 
   <script>
     const data = {json.dumps(payload)};
-    const classColors = {json.dumps(CLASS_COLORS)};
+    const classColors = {json.dumps({display_class_label(label): color for label, color in CLASS_COLORS.items()})};
     const methodBarColors = {{
       none: "#7A7A7A",
       simple: "#F2994A",
@@ -1592,6 +1619,16 @@ def plot_unknown_classification_game_html(
     const referenceSampleById = Object.fromEntries(
       data.referenceSamples.map(sample => [sample.id, sample])
     );
+
+    function methodDescription(method) {{
+      if (
+        testedClassifierResults[method.id]
+        && Number.isFinite(method.testAccuracy)
+      ) {{
+        return `${{method.description}} Overall classifier accuracy on held-out examples: ${{(100 * method.testAccuracy).toFixed(1)}}%.`;
+      }}
+      return method.description;
+    }}
 
     function signalLayout(title, xTitle, yTitle) {{
       return {{
@@ -1971,7 +2008,7 @@ def plot_unknown_classification_game_html(
       const method = methodById[methodId];
       currentTransformMethod = methodId;
       markSelectedMethod(methodId);
-      methodNote.textContent = method.description;
+      methodNote.textContent = methodDescription(method);
       selectedCurvePanel.classList.remove("hidden");
       if (guessStage === "map") {{
         if (roundFinished) {{
@@ -2043,6 +2080,7 @@ def plot_unknown_classification_game_html(
       cleanGuessText.classList.add("placeholder");
       mapGuessText.textContent = "?";
       mapGuessText.classList.add("placeholder");
+      methodNote.textContent = "";
       resultMessage.textContent = "Reveal the true label to update the score.";
       setButtonEnabled("processSample", false);
       setButtonEnabled("transformSample", false);
@@ -2070,7 +2108,7 @@ def plot_unknown_classification_game_html(
         name: "unknown raw signal",
       }}], signalLayout("Unknown sample: raw measurement", "Measurement point", "Sensor response"), {{ responsive: true, displaylogo: false }});
       guessStatus.textContent = "Make your guess from the raw signal.";
-      statusEl.textContent = "The class label is hidden. Choose LOW, TARGET, or HIGH before processing.";
+      statusEl.textContent = "The class label is hidden. Choose Purified Water, Tap Water, or Dirty Water before processing.";
     }}
 
     function makeGuess(label) {{
@@ -2163,6 +2201,7 @@ def plot_unknown_classification_game_html(
         truthText.classList.add("placeholder");
       }}
       renderClassifierResults();
+      methodNote.textContent = methodDescription(method);
       const testedCount = testedClassifierMethodOrder.length;
       const allTested = allClassifierMethodsTested();
       if (roundFinished) {{
@@ -2260,7 +2299,7 @@ def _build_class_pattern_payloads(
             continue
         patterns.append(
             {
-                "label": str(label),
+                "label": display_class_label(str(label)),
                 "color": CLASS_COLORS.get(str(label), "#777777"),
                 "x": list(range(values.shape[1])),
                 "mean": _to_float_list(np.mean(values, axis=0)),
@@ -2282,7 +2321,12 @@ def _build_game_transform_method_payloads(
             "id": "none",
             "label": "No Transform",
             "plotKind": "curve",
-            "description": "Keep the cleaned signal as a curve. This is the hardest view because students still compare shapes by eye.",
+            "testAccuracy": (
+                None
+                if no_transform_result is None
+                else float(no_transform_result.test_accuracy)
+            ),
+            "description": "Keep the cleaned signal as a curve. This is hard to view because we still compare shapes by eye.",
         }
     ]
     map_lookup_by_method: dict[str, dict[int, np.ndarray]] = {}
@@ -2293,6 +2337,7 @@ def _build_game_transform_method_payloads(
                 "id": "simple",
                 "label": "Manual Features",
                 "plotKind": "map",
+                "testAccuracy": float(simple_feature_result.test_accuracy),
                 "description": "Measure each signal with simple numbers, such as its average level, range, peak size, total area, and where peaks happen. Then place samples with similar numbers near each other.",
                 "baseTraces": _plotly_3d_feature_traces_from_arrays(
                     class_order=simple_feature_result.class_order,
@@ -2316,6 +2361,7 @@ def _build_game_transform_method_payloads(
                 "id": "pca",
                 "label": "PCA",
                 "plotKind": "map",
+                "testAccuracy": float(pca_result.test_accuracy),
                 "description": "Compress the full processed signal into three map coordinates without learning class-specific patterns.",
                 "baseTraces": _plotly_3d_feature_traces_from_arrays(
                     class_order=pca_result.class_order,
@@ -2338,6 +2384,7 @@ def _build_game_transform_method_payloads(
             "id": "cnn",
             "label": "CNN",
             "plotKind": "map",
+            "testAccuracy": float(result.test_accuracy),
             "description": "Let the CNN learn useful signal patterns first, then map the learned features into three coordinates.",
             "baseTraces": _plotly_3d_feature_traces_from_arrays(
                 class_order=result.class_order,
@@ -2410,7 +2457,7 @@ def _build_prediction_lookup_by_global_index(
     lookup: dict[int, dict[str, object]] = {}
     for test_position, global_index in enumerate(result.test_indices):
         lookup[int(global_index)] = {
-            "predictedLabel": str(result.y_pred[int(test_position)]),
+            "predictedLabel": display_class_label(str(result.y_pred[int(test_position)])),
             "probabilities": _to_float_list(result.y_prob[int(test_position)]),
         }
     return lookup
@@ -2457,8 +2504,8 @@ def _build_clickable_reference_payloads(
             references.append(
                 {
                     "id": f"known-{ref_label}-{ref_sample_idx}",
-                    "displayName": f"Known {ref_label} example {local_count}",
-                    "label": ref_label,
+                    "displayName": f"Known {display_class_label(ref_label)} example {local_count}",
+                    "label": display_class_label(ref_label),
                     "color": CLASS_COLORS.get(ref_label, "#777777"),
                     "processedSignal": _to_float_list(processed_signal),
                     "mapPoints3d": _map_points_for_global_index(
@@ -2507,11 +2554,11 @@ def _build_unknown_candidate_payloads(
             candidates.append(
                 {
                     "id": f"{raw_label}-{raw_sample_idx}",
-                    "rawLabel": raw_label,
+                    "rawLabel": display_class_label(raw_label),
                     "rawSampleIdx": raw_sample_idx,
                     "rawSignal": _to_float_list(raw_signal),
                     "processedSignal": _to_float_list(processed_signal),
-                    "trueLabel": str(result.y_test[int(test_position)]),
+                    "trueLabel": display_class_label(str(result.y_test[int(test_position)])),
                     "methodPredictions": _predictions_for_global_index(
                         global_index=global_index,
                         prediction_lookup_by_method=prediction_lookup_by_method,
@@ -2609,7 +2656,7 @@ def _plotly_2d_feature_traces(
             {
                 "type": "scatter",
                 "mode": "markers",
-                "name": f"{label} known",
+                "name": f"{display_class_label(label)} known",
                 "x": _to_float_list(result.x_train_map[train_mask, 0]),
                 "y": _to_float_list(result.x_train_map[train_mask, 1]),
                 "marker": {"color": color, "opacity": 0.44, "size": 6},
@@ -2619,7 +2666,7 @@ def _plotly_2d_feature_traces(
             {
                 "type": "scatter",
                 "mode": "markers",
-                "name": f"{label} test",
+                "name": f"{display_class_label(label)} test",
                 "x": _to_float_list(result.x_test_map[test_mask, 0]),
                 "y": _to_float_list(result.x_test_map[test_mask, 1]),
                 "marker": {
@@ -2668,7 +2715,7 @@ def _plotly_3d_feature_traces_from_arrays(
             {
                 "type": "scatter3d",
                 "mode": "markers",
-                "name": f"{label} known",
+                "name": f"{display_class_label(label)} known",
                 "x": _to_float_list(x_train_map_3d[train_mask, 0]),
                 "y": _to_float_list(x_train_map_3d[train_mask, 1]),
                 "z": _to_float_list(x_train_map_3d[train_mask, 2]),
@@ -2681,7 +2728,7 @@ def _plotly_3d_feature_traces_from_arrays(
             {
                 "type": "scatter3d",
                 "mode": "markers",
-                "name": f"{label} test",
+                "name": f"{display_class_label(label)} test",
                 "x": _to_float_list(x_test_map_3d[test_mask, 0]),
                 "y": _to_float_list(x_test_map_3d[test_mask, 1]),
                 "z": _to_float_list(x_test_map_3d[test_mask, 2]),
@@ -2712,7 +2759,7 @@ def _plotly_3d_feature_traces(
             {
                 "type": "scatter3d",
                 "mode": "markers",
-                "name": f"{label} known",
+                "name": f"{display_class_label(label)} known",
                 "x": _to_float_list(result.x_train_map_3d[train_mask, 0]),
                 "y": _to_float_list(result.x_train_map_3d[train_mask, 1]),
                 "z": _to_float_list(result.x_train_map_3d[train_mask, 2]),
@@ -2723,7 +2770,7 @@ def _plotly_3d_feature_traces(
             {
                 "type": "scatter3d",
                 "mode": "markers",
-                "name": f"{label} test",
+                "name": f"{display_class_label(label)} test",
                 "x": _to_float_list(result.x_test_map_3d[test_mask, 0]),
                 "y": _to_float_list(result.x_test_map_3d[test_mask, 1]),
                 "z": _to_float_list(result.x_test_map_3d[test_mask, 2]),
@@ -2763,7 +2810,13 @@ def _to_float_list(values: np.ndarray) -> list[float]:
 
 def _add_class_legend(ax, class_order: Sequence[str]) -> None:
     handles = [
-        plt.Line2D([0], [0], color=CLASS_COLORS.get(label, "#777777"), lw=2, label=label)
+        plt.Line2D(
+            [0],
+            [0],
+            color=CLASS_COLORS.get(label, "#777777"),
+            lw=2,
+            label=display_class_label(label),
+        )
         for label in class_order
     ]
     ax.legend(handles=handles, loc="best")
