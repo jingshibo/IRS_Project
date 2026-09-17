@@ -31,7 +31,6 @@ CLASS_DISPLAY_LABELS = {
     "HIGH": "Dirty Water",
 }
 
-
 def display_class_label(label: str) -> str:
     return CLASS_DISPLAY_LABELS.get(str(label), str(label))
 
