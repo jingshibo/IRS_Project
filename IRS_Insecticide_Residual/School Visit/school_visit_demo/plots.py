@@ -23,10 +23,10 @@ CLASS_COLORS = {
     "TARGET": "#27AE60",
     "HIGH": "#EB5757",
 }
-STD_BAND_ALPHA = 0.26
+STD_BAND_ALPHA = 0.50
 
 CLASS_DISPLAY_LABELS = {
-    "LOW": "Purified Water",
+    "LOW": "Tap Water",
     "TARGET": "Salty Water",
     "HIGH": "Dirty Water",
 }
@@ -1137,6 +1137,7 @@ def plot_unknown_classification_game_html(
     pca_result: DemoClassificationResult | None = None,
     max_unknown_candidates_total: int = 18,
     max_clickable_references_per_class: int = 50,
+    fixed_unknown_sample_ids: Sequence[str] | None = None,
 ) -> Path:
     from plotly.offline import get_plotlyjs
 
@@ -1159,6 +1160,7 @@ def plot_unknown_classification_game_html(
         max_total=max_unknown_candidates_total,
         transform_map_lookup_by_method=transform_map_lookup_by_method,
         prediction_lookup_by_method=prediction_lookup_by_method,
+        fixed_sample_ids=fixed_unknown_sample_ids,
     )
     class_patterns = _build_class_pattern_payloads(
         processed_by_class=processed_by_class,
@@ -1755,7 +1757,7 @@ def plot_unknown_classification_game_html(
         traces.push({{
           type: "scatter",
           mode: "lines",
-          name: `${{pattern.label}} known pattern`,
+          name: `${{pattern.label}}`,
           x: pattern.x,
           y: pattern.mean,
           line: {{ color: pattern.color, width: 2.2 }},
@@ -1829,24 +1831,15 @@ def plot_unknown_classification_game_html(
       }});
     }}
 
-    function shuffledIndices(count) {{
-      const indices = Array.from({{ length: count }}, (_, index) => index);
-      for (let index = indices.length - 1; index > 0; index -= 1) {{
-        const swapIndex = Math.floor(Math.random() * (index + 1));
-        [indices[index], indices[swapIndex]] = [indices[swapIndex], indices[index]];
-      }}
-      return indices;
-    }}
-
     function initializeSampleButtons() {{
       sampleList.innerHTML = "";
       document.getElementById("tryAnother").style.order = String(data.unknownSamples.length + 1);
-      shuffledIndices(data.unknownSamples.length).forEach((sampleIndex, displayIndex) => {{
+      data.unknownSamples.forEach((sample, sampleIndex) => {{
         const button = document.createElement("button");
         button.type = "button";
         button.className = "sample-choice";
-        button.textContent = `Mystery Sample ${{displayIndex + 1}}`;
-        button.style.order = String(displayIndex + 1);
+        button.textContent = `Mystery Sample ${{sampleIndex + 1}}`;
+        button.style.order = String(sampleIndex + 1);
         button.addEventListener("click", () => selectUnknownSample(sampleIndex, button));
         sampleList.appendChild(button);
       }});
@@ -2629,12 +2622,45 @@ def _build_unknown_candidate_payloads(
     max_total: int,
     transform_map_lookup_by_method: dict[str, dict[int, np.ndarray]],
     prediction_lookup_by_method: dict[str, dict[int, dict[str, object]]],
+    fixed_sample_ids: Sequence[str] | None = None,
 ) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
-    class_quotas = _balanced_class_quotas(
-        y_test=result.y_test,
-        class_order=result.class_order,
-        max_total=max_total,
+    selected_positions: list[int] = []
+    selected_position_set: set[int] = set()
+
+    if fixed_sample_ids:
+        fixed_id_order = [str(sample_id) for sample_id in fixed_sample_ids]
+        fixed_id_set = set(fixed_id_order)
+        positions_by_id: dict[str, int] = {}
+        for test_position in range(len(result.test_indices)):
+            global_index = int(result.test_indices[int(test_position)])
+            raw_label, raw_sample_idx, _ = _global_signal_info_by_index(
+                data_by_class=raw_by_class,
+                class_order=result.class_order,
+                global_index=global_index,
+            )
+            sample_id = f"{raw_label}-{raw_sample_idx}"
+            if sample_id in fixed_id_set:
+                positions_by_id[sample_id] = int(test_position)
+
+        for sample_id in fixed_id_order:
+            test_position = positions_by_id.get(sample_id)
+            if test_position is None or test_position in selected_position_set:
+                continue
+            selected_positions.append(test_position)
+            selected_position_set.add(test_position)
+            if len(selected_positions) >= max_total:
+                break
+
+    remaining_total = max(0, max_total - len(selected_positions))
+    class_quotas = (
+        _balanced_class_quotas(
+            y_test=result.y_test,
+            class_order=result.class_order,
+            max_total=remaining_total,
+        )
+        if remaining_total > 0
+        else {}
     )
     train_centroids_by_method = _build_train_centroids_by_method(
         result=result,
@@ -2642,7 +2668,17 @@ def _build_unknown_candidate_payloads(
     )
 
     for label in result.class_order:
+        if len(selected_positions) >= max_total:
+            break
         class_positions = np.flatnonzero(result.y_test == label)
+        class_positions = np.asarray(
+            [
+                int(position)
+                for position in class_positions
+                if int(position) not in selected_position_set
+            ],
+            dtype=int,
+        )
         if len(class_positions) == 0:
             continue
 
@@ -2653,41 +2689,47 @@ def _build_unknown_candidate_payloads(
             prediction_lookup_by_method=prediction_lookup_by_method,
             train_centroids_by_method=train_centroids_by_method,
         )
-        selected_positions = _select_teaching_positions(
+        selected_positions_for_label = _select_teaching_positions(
             positions=class_positions,
             scores=teaching_scores,
             max_count=class_quotas.get(str(label), 0),
         )
-        for test_position in selected_positions:
-            global_index = int(result.test_indices[int(test_position)])
-            raw_label, raw_sample_idx, raw_signal = _global_signal_info_by_index(
-                data_by_class=raw_by_class,
-                class_order=result.class_order,
-                global_index=global_index,
-            )
-            _, _, processed_signal = _global_signal_info_by_index(
-                data_by_class=processed_by_class,
-                class_order=result.class_order,
-                global_index=global_index,
-            )
-            candidates.append(
-                {
-                    "id": f"{raw_label}-{raw_sample_idx}",
-                    "rawLabel": display_class_label(raw_label),
-                    "rawSampleIdx": raw_sample_idx,
-                    "rawSignal": _to_float_list(raw_signal),
-                    "processedSignal": _to_float_list(processed_signal),
-                    "trueLabel": display_class_label(str(result.y_test[int(test_position)])),
-                    "methodPredictions": _predictions_for_global_index(
-                        global_index=global_index,
-                        prediction_lookup_by_method=prediction_lookup_by_method,
-                    ),
-                    "mapPoints3d": _map_points_for_global_index(
-                        global_index=global_index,
-                        transform_map_lookup_by_method=transform_map_lookup_by_method,
-                    ),
-                }
-            )
+        for test_position in selected_positions_for_label:
+            if len(selected_positions) >= max_total:
+                break
+            selected_positions.append(int(test_position))
+            selected_position_set.add(int(test_position))
+
+    for test_position in selected_positions:
+        global_index = int(result.test_indices[int(test_position)])
+        raw_label, raw_sample_idx, raw_signal = _global_signal_info_by_index(
+            data_by_class=raw_by_class,
+            class_order=result.class_order,
+            global_index=global_index,
+        )
+        _, _, processed_signal = _global_signal_info_by_index(
+            data_by_class=processed_by_class,
+            class_order=result.class_order,
+            global_index=global_index,
+        )
+        candidates.append(
+            {
+                "id": f"{raw_label}-{raw_sample_idx}",
+                "rawLabel": display_class_label(raw_label),
+                "rawSampleIdx": raw_sample_idx,
+                "rawSignal": _to_float_list(raw_signal),
+                "processedSignal": _to_float_list(processed_signal),
+                "trueLabel": display_class_label(str(result.y_test[int(test_position)])),
+                "methodPredictions": _predictions_for_global_index(
+                    global_index=global_index,
+                    prediction_lookup_by_method=prediction_lookup_by_method,
+                ),
+                "mapPoints3d": _map_points_for_global_index(
+                    global_index=global_index,
+                    transform_map_lookup_by_method=transform_map_lookup_by_method,
+                ),
+            }
+        )
 
     if not candidates:
         raise ValueError("No unknown candidate samples are available for the classification game.")

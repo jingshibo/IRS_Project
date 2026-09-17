@@ -27,7 +27,7 @@ if str(SCHOOL_VISIT_DIR) not in sys.path:
     sys.path.insert(0, str(SCHOOL_VISIT_DIR))
 
 from school_visit_demo.classifier import train_demo_classifier, train_pca_demo_classifier
-from school_visit_demo.config import CLASS_ORDER, RANDOM_SEED
+from school_visit_demo.config import CLASS_ORDER, FIXED_MYSTERY_SAMPLE_IDS, RANDOM_SEED
 from school_visit_demo.cnn_classifier import train_cnn_demo_classifier
 from school_visit_demo.data_pipeline import (
     build_demo_signal_data_from_grouped,
@@ -110,7 +110,7 @@ if removed_zero_sample_indices:
     log(f"Removed all-zero rows: {removed_zero_sample_indices}")
 
 
-## show individual raw Purified Water / Salty Water / Dirty Water measurements separately
+## show individual raw Tap Water / Salty Water / Dirty Water measurements separately
 raw_sample_indices = select_raw_sample_indices(
     raw_by_class,
     class_order,
@@ -125,7 +125,7 @@ individual_raw_path = plot_individual_raw_signal_subplots(
 log_saved(individual_raw_path)
 
 
-## overlap raw Purified Water / Salty Water / Dirty Water signals
+## overlap raw Tap Water / Salty Water / Dirty Water signals
 raw_signal_path = plot_raw_signals(
     raw_by_class,
     class_order,
@@ -304,6 +304,7 @@ unknown_game_path = plot_unknown_classification_game_html(
     simple_feature_result=simple_feature_classification,
     complex_feature_result=complex_feature_classification,
     pca_result=pca_classification,
+    fixed_unknown_sample_ids=FIXED_MYSTERY_SAMPLE_IDS,
 )
 log_saved(unknown_game_path)
 
