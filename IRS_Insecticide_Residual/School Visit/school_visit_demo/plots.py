@@ -1749,7 +1749,7 @@ def plot_unknown_classification_game_html(
           x: [...pattern.x, ...pattern.x.slice().reverse()],
           y: [...pattern.upper, ...pattern.lower.slice().reverse()],
           fill: "toself",
-          fillcolor: hexToRgba(pattern.color, 0.14),
+          fillcolor: hexToRgba(pattern.color, 0.08),
           line: {{ color: "rgba(0, 0, 0, 0)", width: 0 }},
           hoverinfo: "skip",
           showlegend: false,
@@ -1757,10 +1757,11 @@ def plot_unknown_classification_game_html(
         traces.push({{
           type: "scatter",
           mode: "lines",
-          name: `${{pattern.label}}`,
-          x: pattern.x,
-          y: pattern.mean,
-          line: {{ color: pattern.color, width: 2.2 }},
+          name: `${{pattern.label}} range boundary`,
+          x: [...pattern.x, null, ...pattern.x],
+          y: [...pattern.upper, null, ...pattern.lower],
+          line: {{ color: hexToRgba(pattern.color, 0.6), width: 1.2 }},
+          hoverinfo: "skip",
         }});
       }});
       traces.push({{
