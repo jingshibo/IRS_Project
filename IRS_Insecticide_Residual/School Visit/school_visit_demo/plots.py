@@ -1412,21 +1412,24 @@ def plot_unknown_classification_game_html(
       display: grid;
       grid-template-columns: minmax(240px, 0.42fr) minmax(0, 1fr);
       gap: 14px;
-      align-items: stretch;
+      align-items: start;
     }}
     .answer {{
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 18px;
+      padding: 16px 18px;
       font-size: 18px;
+      display: grid;
+      align-content: start;
     }}
     .answer-row {{
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 12px;
-      padding: 8px 0;
+      padding: 7px 0;
       border-bottom: 1px solid #eeeeee;
+      align-items: center;
     }}
     .answer-row:last-child {{
       border-bottom: 0;
@@ -1459,13 +1462,16 @@ def plot_unknown_classification_game_html(
       color: var(--muted);
     }}
     .result-message {{
-      margin-top: 12px;
-      padding-top: 12px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid #eeeeee;
       font-size: 16px;
       color: var(--muted);
       line-height: 1.45;
       white-space: pre-line;
+    }}
+    #confidencePlot {{
+      height: 300px;
     }}
     .chart-note {{
       margin: 8px 0 0;
@@ -2290,9 +2296,9 @@ def plot_unknown_classification_game_html(
         || new Set(transformGuessValues).size > 1
       );
       resultMessage.textContent = [
-        `Your guess: ${{firstTransformGuess}}.`,
-        `You were ${{studentWasCorrect ? "correct" : "not correct"}}.`,
-        `Classifier predict: ${{classifierGuess}}.`,
+        `Your final guess: ${{firstTransformGuess}}.`,
+        `You were ${{studentWasCorrect ? "correct" : "not correct"}}!`,
+        `The classifier predicted: ${{classifierGuess}}.`,
         changedGuess ? "Your guess changed as the evidence changed." : "",
       ].filter(Boolean).join("\\n");
       statusEl.textContent = "Round complete. Try another mystery sample.";
