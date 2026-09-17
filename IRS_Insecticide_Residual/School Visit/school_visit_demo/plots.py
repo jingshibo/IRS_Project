@@ -27,7 +27,7 @@ STD_BAND_ALPHA = 0.26
 
 CLASS_DISPLAY_LABELS = {
     "LOW": "Purified Water",
-    "TARGET": "Tap Water",
+    "TARGET": "Salty Water",
     "HIGH": "Dirty Water",
 }
 
@@ -2168,7 +2168,7 @@ def plot_unknown_classification_game_html(
         name: "unknown raw signal",
       }}], signalLayout("Unknown sample: raw measurement", "Measurement point", "Sensor response"), {{ responsive: true, displaylogo: false }});
       guessStatus.textContent = "Make your guess from the raw signal.";
-      statusEl.textContent = "The class label is hidden. Choose Purified Water, Tap Water, or Dirty Water before processing.";
+      statusEl.textContent = `The class label is hidden. Choose ${{data.classOrder.join(", ")}} before processing.`;
     }}
 
     function makeGuess(label) {{

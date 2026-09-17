@@ -110,7 +110,7 @@ if removed_zero_sample_indices:
     log(f"Removed all-zero rows: {removed_zero_sample_indices}")
 
 
-## show individual raw Purified Water / Tap Water / Dirty Water measurements separately
+## show individual raw Purified Water / Salty Water / Dirty Water measurements separately
 raw_sample_indices = select_raw_sample_indices(
     raw_by_class,
     class_order,
@@ -125,7 +125,7 @@ individual_raw_path = plot_individual_raw_signal_subplots(
 log_saved(individual_raw_path)
 
 
-## overlap raw Purified Water / Tap Water / Dirty Water signals
+## overlap raw Purified Water / Salty Water / Dirty Water signals
 raw_signal_path = plot_raw_signals(
     raw_by_class,
     class_order,

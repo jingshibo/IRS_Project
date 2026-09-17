@@ -7,7 +7,7 @@ The demonstration story is:
 
 ```text
 load insecticide residual data
--> show multiple individual raw Purified Water / Tap Water / Dirty Water measurements
+-> show multiple individual raw Purified Water / Salty Water / Dirty Water measurements
 -> overlap the same raw samples to show small class differences and noise
 -> show abnormal spike examples and the same signals after spike removal
 -> clean/process the signals
@@ -68,7 +68,7 @@ matrices for the four feature views: PCA Feature, Simple Feature, Complex
 Feature, and CNN Feature.
 
 For the school-visit display, the original dataset labels are renamed:
-`LOW` is shown as `Purified Water`, `TARGET` is shown as `Tap Water`, and
+`LOW` is shown as `Purified Water`, `TARGET` is shown as `Salty Water`, and
 `HIGH` is shown as `Dirty Water`. This is only a display change; the underlying
 data loading and model training still use the original labels.
 
@@ -77,7 +77,7 @@ holdout samples. The mystery set is chosen for teaching value: it prefers
 examples where feature views disagree, where a weaker transformation makes a
 wrong prediction, or where the 3D point sits near the wrong class group.
 Students choose an anonymous item from the mystery sample list, then guess
-Purified Water, Tap Water, or Dirty Water from the raw signal. `Process Sample`
+Purified Water, Salty Water, or Dirty Water from the raw signal. `Process Sample`
 shows the cleaned signal and a known-pattern comparison, using class average
 curves and usual-range bands. Students can then guess again from the cleaner
 evidence.
