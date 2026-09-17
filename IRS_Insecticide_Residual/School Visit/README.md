@@ -85,8 +85,8 @@ shows the cleaned signal and a known-pattern comparison, using class average
 curves and usual-range bands. Students can then guess again from the cleaner
 evidence.
 `Transform Sample` lets students choose
-between four views of the same sample: `PCA Feature`, `Simple Feature`,
-`Complex Feature`, and `CNN Feature`. Each method button gives one intuitive
+between three views of the same sample: `CNN Feature`, `Complex Feature`,
+and `Simple Feature`. Each method button gives one intuitive
 sentence and one technical sentence. The map-based views use a 3D similarity
 map so students can compare whether different transformations make the classes
 cluster more clearly. `Simple Feature` uses compact whole-curve summary

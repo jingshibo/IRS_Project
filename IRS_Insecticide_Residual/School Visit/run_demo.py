@@ -303,7 +303,6 @@ unknown_game_path = plot_unknown_classification_game_html(
     output_dir / "08_unknown_classification_game.html",
     simple_feature_result=simple_feature_classification,
     complex_feature_result=complex_feature_classification,
-    pca_result=pca_classification,
     fixed_unknown_sample_ids=FIXED_MYSTERY_SAMPLE_IDS,
 )
 log_saved(unknown_game_path)

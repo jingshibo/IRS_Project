@@ -1652,7 +1652,7 @@ def plot_unknown_classification_game_html(
     let studentCorrect = 0;
     let classifierCorrect = 0;
     let roundFinished = false;
-    let currentTransformMethod = "pca";
+    let currentTransformMethod = "cnn";
     let classifierGuess = null;
     let classifierMethodLabel = null;
     let testedClassifierResults = {{}};
@@ -2113,8 +2113,8 @@ def plot_unknown_classification_game_html(
       purgePlotIfDrawn("processedPlot");
       purgePlotIfDrawn("patternPlot");
       purgePlotIfDrawn("featurePlot3d");
-      currentTransformMethod = "pca";
-      markSelectedMethod("pca");
+      currentTransformMethod = "cnn";
+      markSelectedMethod("cnn");
       guessStage = null;
       rawGuess = null;
       cleanGuess = null;
@@ -2230,7 +2230,7 @@ def plot_unknown_classification_game_html(
       if (!activeSample || !cleanGuess) return;
       featurePanel.classList.remove("hidden");
       selectedCurvePanel.classList.remove("hidden");
-      plotTransformMethod("pca");
+      plotTransformMethod("cnn");
       guessStage = "map";
       renderTransformGuesses();
       clearGuessSelection();
@@ -2425,30 +2425,29 @@ def _build_game_transform_method_payloads(
             x_test_map_3d=pca_result.x_test_map_3d,
         )
 
-    if simple_feature_result is not None:
-        methods.append(
-            {
-                "id": "simple",
-                "label": "Simple Feature",
-                "plotKind": "map",
-                "testAccuracy": float(simple_feature_result.test_accuracy),
-                "intuitiveDescription": "Measure each curve with a small set of easy clues, like height, spread, area, and peak position.",
-                "technicalDescription": "A KNN classifier uses compact global summary features extracted from each processed signal channel.",
-                "baseTraces": _plotly_3d_feature_traces_from_arrays(
-                    class_order=simple_feature_result.class_order,
-                    x_train_map_3d=simple_feature_result.x_train_map_3d,
-                    x_test_map_3d=simple_feature_result.x_test_map_3d,
-                    y_train=simple_feature_result.y_train,
-                    y_test=simple_feature_result.y_test,
-                ),
-            }
-        )
-        map_lookup_by_method["simple"] = _build_3d_map_lookup_by_global_index(
-            train_indices=simple_feature_result.train_indices,
-            x_train_map_3d=simple_feature_result.x_train_map_3d,
-            test_indices=simple_feature_result.test_indices,
-            x_test_map_3d=simple_feature_result.x_test_map_3d,
-        )
+    methods.append(
+        {
+            "id": "cnn",
+            "label": "CNN Feature",
+            "plotKind": "map",
+            "testAccuracy": float(result.test_accuracy),
+            "intuitiveDescription": "Let the computer learn its own clues from many examples instead of hand-picking the measurements.",
+            "technicalDescription": "A CNN slides small filters along the signal to learn local patterns and combine them into stronger clues; its learned features are then mapped into 3D with PCA.",
+            "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                class_order=result.class_order,
+                x_train_map_3d=result.x_train_map_3d,
+                x_test_map_3d=result.x_test_map_3d,
+                y_train=result.y_train,
+                y_test=result.y_test,
+            ),
+        }
+    )
+    map_lookup_by_method["cnn"] = _build_3d_map_lookup_by_global_index(
+        train_indices=result.train_indices,
+        x_train_map_3d=result.x_train_map_3d,
+        test_indices=result.test_indices,
+        x_test_map_3d=result.x_test_map_3d,
+    )
 
     if complex_feature_result is not None:
         methods.append(
@@ -2475,29 +2474,30 @@ def _build_game_transform_method_payloads(
             x_test_map_3d=complex_feature_result.x_test_map_3d,
         )
 
-    methods.append(
-        {
-            "id": "cnn",
-            "label": "CNN Feature",
-            "plotKind": "map",
-            "testAccuracy": float(result.test_accuracy),
-            "intuitiveDescription": "Let the computer learn its own clues from many examples instead of hand-picking the measurements.",
-            "technicalDescription": "A CNN slides small filters along the signal to learn local patterns and combine them into stronger clues; its learned features are then mapped into 3D with PCA.",
-            "baseTraces": _plotly_3d_feature_traces_from_arrays(
-                class_order=result.class_order,
-                x_train_map_3d=result.x_train_map_3d,
-                x_test_map_3d=result.x_test_map_3d,
-                y_train=result.y_train,
-                y_test=result.y_test,
-            ),
-        }
-    )
-    map_lookup_by_method["cnn"] = _build_3d_map_lookup_by_global_index(
-        train_indices=result.train_indices,
-        x_train_map_3d=result.x_train_map_3d,
-        test_indices=result.test_indices,
-        x_test_map_3d=result.x_test_map_3d,
-    )
+    if simple_feature_result is not None:
+        methods.append(
+            {
+                "id": "simple",
+                "label": "Simple Feature",
+                "plotKind": "map",
+                "testAccuracy": float(simple_feature_result.test_accuracy),
+                "intuitiveDescription": "Measure each curve with a small set of easy clues, like height, spread, area, and peak position.",
+                "technicalDescription": "A KNN classifier uses compact global summary features extracted from each processed signal channel.",
+                "baseTraces": _plotly_3d_feature_traces_from_arrays(
+                    class_order=simple_feature_result.class_order,
+                    x_train_map_3d=simple_feature_result.x_train_map_3d,
+                    x_test_map_3d=simple_feature_result.x_test_map_3d,
+                    y_train=simple_feature_result.y_train,
+                    y_test=simple_feature_result.y_test,
+                ),
+            }
+        )
+        map_lookup_by_method["simple"] = _build_3d_map_lookup_by_global_index(
+            train_indices=simple_feature_result.train_indices,
+            x_train_map_3d=simple_feature_result.x_train_map_3d,
+            test_indices=simple_feature_result.test_indices,
+            x_test_map_3d=simple_feature_result.x_test_map_3d,
+        )
 
     return methods, map_lookup_by_method
 
