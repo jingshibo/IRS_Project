@@ -1585,7 +1585,7 @@ def plot_unknown_classification_game_html(
             <strong id="cleanGuessText" class="placeholder">?</strong>
           </div>
           <div class="answer-row">
-            <span>After transform guesses</span>
+            <span>After transform guess</span>
             <div id="mapGuessList" class="guess-list"></div>
           </div>
           <div class="answer-row">
@@ -1878,23 +1878,10 @@ def plot_unknown_classification_game_html(
 
     function renderTransformGuesses() {{
       mapGuessList.innerHTML = "";
-      data.transformMethods.forEach(method => {{
-        const row = document.createElement("div");
-        row.className = "guess-list-row";
-        const methodLabel = document.createElement("span");
-        methodLabel.textContent = method.label;
-        const guessValue = document.createElement("strong");
-        const guess = transformGuesses[method.id];
-        guessValue.textContent = guess || "?";
-        guessValue.className = guess ? "" : "placeholder";
-        if (method.id === firstTransformMethodId) {{
-          guessValue.classList.add("score-guess");
-          guessValue.title = "This first transform guess is used for the student score.";
-        }}
-        row.appendChild(methodLabel);
-        row.appendChild(guessValue);
-        mapGuessList.appendChild(row);
-      }});
+      const guessValue = document.createElement("strong");
+      guessValue.textContent = firstTransformGuess || "?";
+      guessValue.className = firstTransformGuess ? "score-guess" : "placeholder";
+      mapGuessList.appendChild(guessValue);
     }}
 
     function cloneTraces(traces) {{
@@ -2302,23 +2289,10 @@ def plot_unknown_classification_game_html(
         || cleanGuess !== firstTransformGuess
         || new Set(transformGuessValues).size > 1
       );
-      const correctClassifierMethods = testedClassifierMethodOrder
-        .filter(methodId => testedClassifierResults[methodId].predictedLabel === activeSample.trueLabel)
-        .map(methodId => methodById[methodId].label);
-      const incorrectClassifierMethods = testedClassifierMethodOrder
-        .filter(methodId => testedClassifierResults[methodId].predictedLabel !== activeSample.trueLabel)
-        .map(methodId => methodById[methodId].label);
-      const correctSummary = correctClassifierMethods.length > 0
-        ? correctClassifierMethods.join(", ")
-        : "none";
-      const incorrectSummary = incorrectClassifierMethods.length > 0
-        ? incorrectClassifierMethods.join(", ")
-        : "none";
-      const firstMethodLabel = methodById[firstTransformMethodId]?.label || "first transform";
       resultMessage.textContent = [
-        `Score-counting student guess: ${{firstTransformGuess}} (${{firstMethodLabel}}). You were ${{studentWasCorrect ? "correct" : "not correct"}}.`,
-        `Correct classifier methods: ${{correctSummary}}.`,
-        `Incorrect classifier methods: ${{incorrectSummary}}.`,
+        `Your guess: ${{firstTransformGuess}}.`,
+        `You were ${{studentWasCorrect ? "correct" : "not correct"}}.`,
+        `Classifier predict: ${{classifierGuess}}.`,
         changedGuess ? "Your guess changed as the evidence changed." : "",
       ].filter(Boolean).join("\\n");
       statusEl.textContent = "Round complete. Try another mystery sample.";

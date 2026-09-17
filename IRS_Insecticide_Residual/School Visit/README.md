@@ -34,6 +34,9 @@ excel_path = None
 sheet_name = 0
 label_col = None
 output_dir = SCHOOL_VISIT_DIR / "outputs"
+model_cache_dir = SCHOOL_VISIT_DIR / "model_cache"
+use_trained_cache = True
+refresh_trained_cache = False
 test_size = 0.20
 unknown_test_position = None
 random_seed = RANDOM_SEED
@@ -49,6 +52,14 @@ prediction.
 
 The CNN settings are also editable near the top of `run_demo.py`, for example
 `cnn_epochs`, `cnn_batch_size`, `cnn_model_name`, and `cnn_n_splits`.
+
+To keep the webpages repeatable, the trained feature/classifier results are
+cached in `model_cache/`. When `use_trained_cache = True`, the script loads
+`school_visit_training_results.pkl` if it matches the current data and settings,
+so the CNN features, predictions, confidence values, and webpage maps stay the
+same without retraining. The best CNN fold weights are saved separately as
+`cnn_best_model.pt`. Set `refresh_trained_cache = True` to retrain once and
+overwrite both cache files.
 
 Outputs are written to `outputs/`:
 

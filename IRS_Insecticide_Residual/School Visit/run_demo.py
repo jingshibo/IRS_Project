@@ -27,6 +27,14 @@ if str(SCHOOL_VISIT_DIR) not in sys.path:
     sys.path.insert(0, str(SCHOOL_VISIT_DIR))
 
 from school_visit_demo.classifier import train_demo_classifier, train_pca_demo_classifier
+from school_visit_demo.cache import (
+    CACHE_BUNDLE_NAME,
+    CACHE_VERSION,
+    CNN_BEST_MODEL_NAME,
+    load_training_cache,
+    save_best_cnn_model,
+    save_training_cache,
+)
 from school_visit_demo.config import CLASS_ORDER, FIXED_MYSTERY_SAMPLE_IDS, RANDOM_SEED
 from school_visit_demo.cnn_classifier import train_cnn_demo_classifier
 from school_visit_demo.data_pipeline import (
@@ -67,6 +75,9 @@ excel_path = None  # use None to check the default lab paths
 sheet_name = 0
 label_col = None  # use None to treat the first Excel column as the label column
 output_dir = SCHOOL_VISIT_DIR / "outputs"
+model_cache_dir = SCHOOL_VISIT_DIR / "model_cache"
+use_trained_cache = True
+refresh_trained_cache = False
 test_size = 0.20
 unknown_test_position = None  # use None to choose a confident correct holdout example
 random_seed = RANDOM_SEED
@@ -190,74 +201,134 @@ stale_feature_table_path = output_dir / "feature_examples.csv"
 if stale_feature_table_path.exists():
     stale_feature_table_path.unlink()
 
-log("Extracting simple manually designed features...")
-simple_feature_data = extract_simple_demo_features(
-    signal_data.x_all,
-    signal_data.y_all,
-    channel_names=signal_data.selected_value_types,
-)
+training_cache_path = model_cache_dir / CACHE_BUNDLE_NAME
+cnn_model_cache_path = model_cache_dir / CNN_BEST_MODEL_NAME
+training_cache_metadata = {
+    "cache_version": CACHE_VERSION,
+    "data_path": str(data_path),
+    "data_mtime_ns": data_path.stat().st_mtime_ns if data_path.exists() else None,
+    "label_col": str(resolved_label_col),
+    "class_order": tuple(str(label) for label in signal_data.class_order),
+    "selected_value_types": tuple(str(value_type) for value_type in signal_data.selected_value_types),
+    "x_shape": tuple(int(value) for value in signal_data.x_all.shape),
+    "test_size": float(test_size),
+    "unknown_test_position": unknown_test_position,
+    "random_seed": int(random_seed),
+    "cnn_model_name": cnn_model_name,
+    "cnn_epochs": int(cnn_epochs),
+    "cnn_batch_size": int(cnn_batch_size),
+    "cnn_lr": float(cnn_lr),
+    "cnn_weight_decay": float(cnn_weight_decay),
+    "cnn_label_smoothing": float(cnn_label_smoothing),
+    "cnn_patience": int(cnn_patience),
+    "cnn_n_splits": int(cnn_n_splits),
+}
 
-log("Extracting complex manually designed features...")
-complex_feature_data = extract_complex_demo_features(
-    signal_data.x_all,
-    signal_data.y_all,
-    channel_names=signal_data.selected_value_types,
-)
+cached_training = None
+if use_trained_cache and not refresh_trained_cache:
+    cached_training = load_training_cache(training_cache_path, training_cache_metadata)
 
-processed_signal_features = signal_data.x_all.reshape(len(signal_data.x_all), -1)
+if cached_training is not None:
+    log(f"Loading cached trained features/results: {training_cache_path}")
+    simple_feature_data = cached_training["simple_feature_data"]
+    complex_feature_data = cached_training["complex_feature_data"]
+    pca_classification = cached_training["pca_classification"]
+    simple_feature_classification = cached_training["simple_feature_classification"]
+    complex_feature_classification = cached_training["complex_feature_classification"]
+    cnn_classification = cached_training["cnn_classification"]
+else:
+    if use_trained_cache and training_cache_path.exists():
+        log("Cached trained features/results are missing or out of date; rebuilding cache...")
 
-log("Training Simple Feature classifier...")
-simple_feature_classification = train_demo_classifier(
-    simple_feature_data.x_features,
-    signal_data.y_all,
-    class_order=signal_data.class_order,
-    random_seed=random_seed,
-    test_size=test_size,
-    unknown_test_position=unknown_test_position,
-    method_name="Simple Feature",
-    input_description="compact manually designed signal features",
-)
+    log("Extracting simple manually designed features...")
+    simple_feature_data = extract_simple_demo_features(
+        signal_data.x_all,
+        signal_data.y_all,
+        channel_names=signal_data.selected_value_types,
+    )
 
-log("Training Complex Feature classifier...")
-complex_feature_classification = train_demo_classifier(
-    complex_feature_data.x_features,
-    signal_data.y_all,
-    class_order=signal_data.class_order,
-    random_seed=random_seed,
-    test_size=test_size,
-    unknown_test_position=unknown_test_position,
-    method_name="Complex Feature",
-    input_description="full manually designed signal features",
-)
+    log("Extracting complex manually designed features...")
+    complex_feature_data = extract_complex_demo_features(
+        signal_data.x_all,
+        signal_data.y_all,
+        channel_names=signal_data.selected_value_types,
+    )
 
-log("Training PCA-space classifier...")
-pca_classification = train_pca_demo_classifier(
-    processed_signal_features,
-    signal_data.y_all,
-    class_order=signal_data.class_order,
-    random_seed=random_seed,
-    test_size=test_size,
-    unknown_test_position=unknown_test_position,
-)
+    processed_signal_features = signal_data.x_all.reshape(len(signal_data.x_all), -1)
 
-log("Training CNN demonstration classifier...")
-cnn_classification = train_cnn_demo_classifier(
-    signal_data.x_all,
-    signal_data.y_all,
-    class_order=signal_data.class_order,
-    random_seed=random_seed,
-    test_size=test_size,
-    unknown_test_position=unknown_test_position,
-    model_name=cnn_model_name,
-    epochs=cnn_epochs,
-    batch_size=cnn_batch_size,
-    lr=cnn_lr,
-    weight_decay=cnn_weight_decay,
-    label_smoothing=cnn_label_smoothing,
-    patience=cnn_patience,
-    n_splits=cnn_n_splits,
-    verbose=cnn_verbose,
-)
+    log("Training Simple Feature classifier...")
+    simple_feature_classification = train_demo_classifier(
+        simple_feature_data.x_features,
+        signal_data.y_all,
+        class_order=signal_data.class_order,
+        random_seed=random_seed,
+        test_size=test_size,
+        unknown_test_position=unknown_test_position,
+        method_name="Simple Feature",
+        input_description="compact manually designed signal features",
+    )
+
+    log("Training Complex Feature classifier...")
+    complex_feature_classification = train_demo_classifier(
+        complex_feature_data.x_features,
+        signal_data.y_all,
+        class_order=signal_data.class_order,
+        random_seed=random_seed,
+        test_size=test_size,
+        unknown_test_position=unknown_test_position,
+        method_name="Complex Feature",
+        input_description="full manually designed signal features",
+    )
+
+    log("Training PCA-space classifier...")
+    pca_classification = train_pca_demo_classifier(
+        processed_signal_features,
+        signal_data.y_all,
+        class_order=signal_data.class_order,
+        random_seed=random_seed,
+        test_size=test_size,
+        unknown_test_position=unknown_test_position,
+    )
+
+    log("Training CNN demonstration classifier...")
+    cnn_classification = train_cnn_demo_classifier(
+        signal_data.x_all,
+        signal_data.y_all,
+        class_order=signal_data.class_order,
+        random_seed=random_seed,
+        test_size=test_size,
+        unknown_test_position=unknown_test_position,
+        model_name=cnn_model_name,
+        epochs=cnn_epochs,
+        batch_size=cnn_batch_size,
+        lr=cnn_lr,
+        weight_decay=cnn_weight_decay,
+        label_smoothing=cnn_label_smoothing,
+        patience=cnn_patience,
+        n_splits=cnn_n_splits,
+        verbose=cnn_verbose,
+    )
+
+    if use_trained_cache:
+        log(f"Saving trained features/results cache: {training_cache_path}")
+        save_best_cnn_model(
+            cnn_model_cache_path,
+            cnn_classification,
+            training_cache_metadata,
+        )
+        save_training_cache(
+            training_cache_path,
+            training_cache_metadata,
+            {
+                "simple_feature_data": simple_feature_data,
+                "complex_feature_data": complex_feature_data,
+                "pca_classification": pca_classification,
+                "simple_feature_classification": simple_feature_classification,
+                "complex_feature_classification": complex_feature_classification,
+                "cnn_classification": cnn_classification,
+            },
+        )
+        log(f"Saved CNN best model weights: {cnn_model_cache_path}")
 
 classification = cnn_classification
 
@@ -304,6 +375,7 @@ unknown_game_path = plot_unknown_classification_game_html(
     simple_feature_result=simple_feature_classification,
     complex_feature_result=complex_feature_classification,
     fixed_unknown_sample_ids=FIXED_MYSTERY_SAMPLE_IDS,
+    max_unknown_candidates_total=len(FIXED_MYSTERY_SAMPLE_IDS),
 )
 log_saved(unknown_game_path)
 

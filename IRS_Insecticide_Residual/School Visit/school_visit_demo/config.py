@@ -16,24 +16,24 @@ FEATURE_TABLE_ROWS_PER_CLASS = 2
 # Fixed mystery samples for the interactive game. These IDs use the original
 # dataset label plus the local sample index shown in the generated HTML payload.
 FIXED_MYSTERY_SAMPLE_IDS = (
-    "LOW-110",
-    "LOW-512",
-    "LOW-46",
+    "LOW-211",
+    "LOW-281",
     "LOW-391",
-    "LOW-785",
-    "LOW-473",
-    "TARGET-38",
-    "TARGET-209",
+    "LOW-645",
+    "LOW-512",
+    "LOW-503",
     "TARGET-543",
-    "TARGET-740",
+    "TARGET-481",
+    "TARGET-101",
+    "TARGET-606",
     "TARGET-557",
-    "TARGET-692",
+    "TARGET-284",
     "HIGH-489",
-    "HIGH-491",
-    "HIGH-612",
-    "HIGH-4",
-    "HIGH-98",
-    "HIGH-674",
+    "HIGH-345",
+    "HIGH-1",
+    "HIGH-435",
+    "HIGH-366",
+    "HIGH-413",
 )
 
 DEFAULT_DATA_CANDIDATES = (
