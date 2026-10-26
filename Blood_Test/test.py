@@ -7,6 +7,7 @@ from Functions import (
     apply_savgol_filter_nested,
     apply_savgol_to_re_im_and_recompute,
     downsample_nested_data,
+    exclude_data_blocks,
     load_blood_folder,
     print_blood_data_summary,
 )
@@ -20,7 +21,17 @@ from Model.evaluation import (
 
 ## Load the raw data in PyCharm/Python console mode
 DATA_DIR = Path(r"/home/shibojing/data/blood")
+
+# Optional exclusions use: (sample type, set number, concentration).
+# Use an empty tuple () to include every measurement.
+EXCLUDED_DATA_BLOCKS = (
+)
+
 raw_data = load_blood_folder(DATA_DIR)
+raw_data = exclude_data_blocks(
+    raw_data,
+    excluded_blocks=EXCLUDED_DATA_BLOCKS,
+)
 print_blood_data_summary(raw_data)
 
 
@@ -65,11 +76,11 @@ print(
 
 
 ## Build the three-class concentration dataset and grouped CV splits
-# Use complex subtraction magnitude (channel 9) as the initial single-channel input.
+# Use complex subtraction magnitude (channel 7) as the initial single-channel input.
 # A group is one independent (set, concentration, sample), containing 5 repetitions.
 data = dataset.build_concentration_dataset(
     downsampled_difference_data,
-    channel_indices=(9,),
+    channel_indices=(8,), ## 8 is the best one
 )
 
 # In each of 8 folds, one sample index is held out for validation and the other
