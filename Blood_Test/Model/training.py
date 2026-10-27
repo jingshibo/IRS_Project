@@ -48,7 +48,8 @@ class TrainerConfig:
 @dataclass
 class FoldResult:
     fold: int
-    validation_sample: int
+    validation_sample: int | None
+    validation_set: int | None
     model: nn.Module
     best_epoch: int
     history: Dict[str, List[float]]
@@ -310,9 +311,14 @@ class BloodConcentrationTrainer:
         stale_epochs = 0
 
         if self.config.verbose:
+            validation_label = (
+                f"set {split.validation_set}"
+                if split.validation_set is not None
+                else f"S{split.validation_sample}"
+            )
             print(
                 f"Fold {split.fold + 1}: training on {self.device}; "
-                f"validation=S{split.validation_sample}"
+                f"validation={validation_label}"
             )
 
         for epoch_index in range(self.config.epochs):
@@ -390,6 +396,7 @@ class BloodConcentrationTrainer:
         return FoldResult(
             fold=split.fold,
             validation_sample=split.validation_sample,
+            validation_set=split.validation_set,
             model=model,
             best_epoch=best_epoch,
             history=history,
@@ -404,4 +411,3 @@ class BloodConcentrationTrainer:
             label_to_idx=split.label_to_idx,
             idx_to_label=split.idx_to_label,
         )
-

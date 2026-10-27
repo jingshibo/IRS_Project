@@ -20,7 +20,8 @@ class BloodConcentrationDataset:
 @dataclass
 class BloodConcentrationSplit:
     fold: int
-    validation_sample: int
+    validation_sample: int | None
+    validation_set: int | None
     x_train: np.ndarray
     y_train: np.ndarray
     train_group_ids: np.ndarray
@@ -207,6 +208,53 @@ def _measurement_indices_for_groups(
     return np.flatnonzero(mask)
 
 
+def _build_split(
+    dataset: BloodConcentrationDataset,
+    *,
+    fold: int,
+    train_group_ids: set[int],
+    validation_group_ids: set[int],
+    validation_sample: int | None = None,
+    validation_set: int | None = None,
+) -> BloodConcentrationSplit:
+    """Build one normalized split from disjoint sample-group IDs."""
+    if train_group_ids & validation_group_ids:
+        raise ValueError(f"Fold {fold + 1}: train/validation groups overlap")
+
+    train_indices = _measurement_indices_for_groups(dataset, train_group_ids)
+    validation_indices = _measurement_indices_for_groups(
+        dataset,
+        validation_group_ids,
+    )
+    if not len(train_indices) or not len(validation_indices):
+        raise ValueError(f"Fold {fold + 1}: one or more partitions are empty")
+
+    train_mean, train_std = _compute_channel_stats(dataset.x[train_indices])
+    return BloodConcentrationSplit(
+        fold=fold,
+        validation_sample=validation_sample,
+        validation_set=validation_set,
+        x_train=_normalize_signals(
+            dataset.x[train_indices], train_mean, train_std
+        ),
+        y_train=dataset.y[train_indices],
+        train_group_ids=dataset.group_ids[train_indices],
+        x_validation=_normalize_signals(
+            dataset.x[validation_indices], train_mean, train_std
+        ),
+        y_validation=dataset.y[validation_indices],
+        validation_group_ids=dataset.group_ids[validation_indices],
+        train_indices=train_indices,
+        validation_indices=validation_indices,
+        label_to_idx=dataset.label_to_idx,
+        idx_to_label=dataset.idx_to_label,
+        measurement_keys=dataset.measurement_keys,
+        sample_groups=dataset.sample_groups,
+        train_mean=train_mean,
+        train_std=train_std,
+    )
+
+
 def build_leave_one_sample_out_splits(
     dataset: BloodConcentrationDataset,
 ) -> List[BloodConcentrationSplit]:
@@ -259,40 +307,72 @@ def build_leave_one_sample_out_splits(
         }
         train_group_ids = all_group_ids - validation_group_ids
 
-        if train_group_ids & validation_group_ids:
-            raise ValueError(f"Fold {fold + 1}: train/validation groups overlap")
-
-        train_indices = _measurement_indices_for_groups(dataset, train_group_ids)
-        validation_indices = _measurement_indices_for_groups(
-            dataset,
-            validation_group_ids,
-        )
-        if not len(train_indices) or not len(validation_indices):
-            raise ValueError(f"Fold {fold + 1}: one or more partitions are empty")
-
-        train_mean, train_std = _compute_channel_stats(dataset.x[train_indices])
         splits.append(
-            BloodConcentrationSplit(
+            _build_split(
+                dataset,
                 fold=fold,
+                train_group_ids=train_group_ids,
+                validation_group_ids=validation_group_ids,
                 validation_sample=validation_sample,
-                x_train=_normalize_signals(
-                    dataset.x[train_indices], train_mean, train_std
-                ),
-                y_train=dataset.y[train_indices],
-                train_group_ids=dataset.group_ids[train_indices],
-                x_validation=_normalize_signals(
-                    dataset.x[validation_indices], train_mean, train_std
-                ),
-                y_validation=dataset.y[validation_indices],
-                validation_group_ids=dataset.group_ids[validation_indices],
-                train_indices=train_indices,
-                validation_indices=validation_indices,
-                label_to_idx=dataset.label_to_idx,
-                idx_to_label=dataset.idx_to_label,
-                measurement_keys=dataset.measurement_keys,
-                sample_groups=dataset.sample_groups,
-                train_mean=train_mean,
-                train_std=train_std,
+            )
+        )
+
+    return splits
+
+
+def build_leave_one_set_out_splits(
+    dataset: BloodConcentrationDataset,
+) -> List[BloodConcentrationSplit]:
+    """
+    Build folds that validate on one complete measurement set at a time.
+
+    With three measurement sets:
+
+    - Fold 1 validates on set 1 and trains on sets 2-3.
+    - Fold 2 validates on set 2 and trains on sets 1 and 3.
+    - Fold 3 validates on set 3 and trains on sets 1-2.
+
+    Every biological sample and all of its repetitions stay together. Channel
+    normalization is fitted only on the two training sets in each fold.
+    """
+    set_indices = sorted({int(group["set"]) for group in dataset.sample_groups})
+    if len(set_indices) < 2:
+        raise ValueError(
+            "At least two sets are required for leave-one-set-out evaluation, "
+            f"got {set_indices}"
+        )
+
+    expected_labels = set(dataset.label_to_idx)
+    set_to_labels: Dict[int, set[str]] = {}
+    for group in dataset.sample_groups:
+        set_to_labels.setdefault(int(group["set"]), set()).add(str(group["label"]))
+    incomplete_sets = {
+        set_index: sorted(expected_labels - labels, key=_concentration_sort_key)
+        for set_index, labels in set_to_labels.items()
+        if labels != expected_labels
+    }
+    if incomplete_sets:
+        raise ValueError(
+            "Every validation set must contain every concentration; "
+            f"missing concentrations={incomplete_sets}"
+        )
+
+    splits: List[BloodConcentrationSplit] = []
+    all_group_ids = set(range(len(dataset.sample_groups)))
+    for fold, validation_set in enumerate(set_indices):
+        validation_group_ids = {
+            group_id
+            for group_id, group in enumerate(dataset.sample_groups)
+            if int(group["set"]) == validation_set
+        }
+        train_group_ids = all_group_ids - validation_group_ids
+        splits.append(
+            _build_split(
+                dataset,
+                fold=fold,
+                train_group_ids=train_group_ids,
+                validation_group_ids=validation_group_ids,
+                validation_set=validation_set,
             )
         )
 
