@@ -3,7 +3,7 @@ from pathlib import Path
 
 from Functions import (
     append_pbs_complex_difference,
-    append_pbs_reference_difference,
+    append_pbs_plain_difference,
     apply_savgol_filter_nested,
     apply_savgol_to_re_im_and_recompute,
     downsample_nested_data,
@@ -47,15 +47,15 @@ print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
 ## Calculate set-specific PBS-referenced features
 # For each set, average its five PBS repetitions and append the pointwise
 # [real, imaginary, amplitude, phase] differences from that set's mean PBS trace.
-difference_data = append_pbs_reference_difference(filtered_data)
+plain_difference_data = append_pbs_plain_difference(filtered_data)
 
 # Append two complex-valued comparison features using the same set's mean PBS:
 # the phase of (SAU / PBS) and the magnitude of (SAU - PBS).
-difference_data = append_pbs_complex_difference(difference_data)
+complex_difference_data = append_pbs_complex_difference(plain_difference_data)
 
 # Smooth all ten existing and PBS-derived channels along the frequency axis.
 filtered_difference_data = apply_savgol_filter_nested(
-    difference_data,
+    complex_difference_data,
     window_length=31,
     polyorder=3,
 )
@@ -76,20 +76,19 @@ print(
 
 
 ## Build the three-class concentration dataset and grouped CV splits
-# Use complex subtraction magnitude (channel 7) as the initial single-channel input.
 # A group is one independent (set, concentration, sample), containing 5 repetitions.
-data = dataset.build_concentration_dataset(
+grouped_data = dataset.build_concentration_dataset(
     downsampled_difference_data,
-    channel_indices=(8,), ## 8 is the best one
+    channel_indices=(0, 4), ## 8 is the best one (the combination of original and difference is better than the original or difference one)
 )
 
-# In each of 8 folds, one sample index is held out for validation and the other
-# seven are used for training. Normalization uses only the training partition.
-cv_splits = dataset.build_leave_one_sample_out_splits(data)
+# In each of 8 folds, one sample index is held out for validation and the other seven are used for training.
+# Normalization uses only the training partition.
+cv_splits = dataset.build_leave_one_sample_out_splits(grouped_data)
 
 print(
-    f"Built {len(cv_splits)} folds from {len(data.sample_groups)} independent "
-    f"samples and {len(data.x)} repeated measurements; x shape={data.x.shape}."
+    f"Built {len(cv_splits)} folds from {len(grouped_data.sample_groups)} independent "
+    f"samples and {len(grouped_data.x)} repeated measurements; x shape={grouped_data.x.shape}."
 )
 for split in cv_splits:
     print(

@@ -35,7 +35,7 @@ def _get_set_specific_pbs_reference(
     return np.nanmean(pbs_block, axis=(1, 2), dtype=np.float32)
 
 
-def append_pbs_reference_difference(
+def append_pbs_plain_difference(
     data: Dict[str, Dict[str, np.ndarray]],
     *,
     pbs_sample_type: str = "PBS",
@@ -135,12 +135,8 @@ def append_pbs_complex_difference(
             complex_values = real_values + 1j * imaginary_values
             expanded_base = complex_base[:, np.newaxis, np.newaxis, :]
 
-            complex_ratio_phase = np.angle(
-                complex_values / (expanded_base + eps)
-            ).astype(np.float32, copy=False)
-            complex_subtraction_magnitude = np.abs(
-                complex_values - expanded_base
-            ).astype(np.float32, copy=False)
+            complex_ratio_phase = np.angle(complex_values / (expanded_base + eps)).astype(np.float32, copy=False)
+            complex_subtraction_magnitude = np.abs(complex_values - expanded_base).astype(np.float32, copy=False)
 
             appended = np.stack(
                 (complex_ratio_phase, complex_subtraction_magnitude),
