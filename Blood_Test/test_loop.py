@@ -19,15 +19,21 @@ from Blood_Test.Model import dataset, training
 from Blood_Test.Model.channel_comparison import (
     CHANNEL_NAMES,
     build_channel_comparison_result,
+    build_difference_pair_combinations,
+    build_difference_pair_result,
     build_original_difference_combinations,
     build_single_channel_result,
     plot_channel_metric_heatmap,
+    plot_difference_pair_metric_heatmap,
     plot_single_channel_metric,
+    print_ranked_difference_pair_results,
     print_ranked_channel_results,
     print_ranked_single_channel_results,
     save_channel_comparison_csv,
+    save_difference_pair_comparison_csv,
     save_single_channel_comparison_csv,
     sort_channel_comparison_results,
+    sort_difference_pair_results,
     sort_single_channel_results,
 )
 from Blood_Test.Model.evaluation import (
@@ -47,12 +53,13 @@ EXCLUDED_DATA_BLOCKS = (
 
 # Choose "leave_one_sample_out" for eight folds (S1-S8), or
 # "leave_one_set_out" for three folds (set 1-set 3).
-EVALUATION_METHOD = "leave_one_set_out"
+EVALUATION_METHOD = "leave_one_sample_out"
 
-# Enable either experiment independently. With leave-one-set-out, running both
-# trains (24 + 10) x 3 = 102 models. Leave-one-sample-out trains 272 models.
-RUN_TWO_CHANNEL_COMPARISON = True
-RUN_SINGLE_CHANNEL_COMPARISON = True
+# Enable each experiment independently. The new difference-pair mode evaluates
+# all C(7, 2) = 21 unique pairs formed from channels 4 through 10.
+RUN_TWO_CHANNEL_COMPARISON = False
+RUN_DIFFERENCE_PAIR_COMPARISON = True
+RUN_SINGLE_CHANNEL_COMPARISON = False
 SHOW_RESULT_PLOTS = True
 
 raw_data = load_blood_folder(DATA_DIR)
@@ -118,6 +125,11 @@ RESULTS_ROOT = (
 PAIR_RESULTS_DIR = RESULTS_ROOT / "two_channel_combinations"
 PAIR_RECALL_DIR = PAIR_RESULTS_DIR / "recall_matrices"
 PAIR_RESULTS_CSV = PAIR_RESULTS_DIR / "channel_comparison_results.csv"
+DIFFERENCE_PAIR_RESULTS_DIR = RESULTS_ROOT / "difference_channel_pairs"
+DIFFERENCE_PAIR_RECALL_DIR = DIFFERENCE_PAIR_RESULTS_DIR / "recall_matrices"
+DIFFERENCE_PAIR_RESULTS_CSV = (
+    DIFFERENCE_PAIR_RESULTS_DIR / "difference_pair_results.csv"
+)
 SINGLE_RESULTS_DIR = RESULTS_ROOT / "individual_channels"
 SINGLE_RECALL_DIR = SINGLE_RESULTS_DIR / "recall_matrices"
 SINGLE_RESULTS_CSV = SINGLE_RESULTS_DIR / "single_channel_results.csv"
@@ -236,9 +248,101 @@ if pair_results:
     )
 
 
+## Train and evaluate all 21 unique pairs of difference channels 4 through 10
+difference_pair_results = []
+difference_pair_combinations = build_difference_pair_combinations(
+    difference_channels=tuple(range(4, 11)),
+)
+if RUN_DIFFERENCE_PAIR_COMPARISON:
+    for combination_number, (first_channel, second_channel) in enumerate(
+        difference_pair_combinations,
+        start=1,
+    ):
+        selected_channels = (first_channel, second_channel)
+        first_name = CHANNEL_NAMES[first_channel]
+        second_name = CHANNEL_NAMES[second_channel]
+        started_at = time.perf_counter()
+        print(
+            f"\nDifference pair {combination_number}/"
+            f"{len(difference_pair_combinations)}: "
+            f"{selected_channels} = {first_name} + {second_name}"
+        )
+
+        grouped_data, cv_splits = build_selected_channel_splits(selected_channels)
+        fold_results = []
+        for split in cv_splits:
+            print(
+                f"  fold {split.fold + 1}/{len(cv_splits)} "
+                f"(validation={validation_name(split)})"
+            )
+            fold_results.append(trainer.fit(split))
+
+        result_summary = summarize_results(fold_results)
+        elapsed_seconds = time.perf_counter() - started_at
+        difference_pair_results.append(
+            build_difference_pair_result(
+                first_channel=first_channel,
+                second_channel=second_channel,
+                summary=result_summary,
+                elapsed_seconds=elapsed_seconds,
+            )
+        )
+        print_result_summary(result_summary)
+        print(f"Elapsed time: {elapsed_seconds / 60.0:.1f} minutes")
+
+        plot_recall_matrix_with_numbers(
+            result_summary,
+            level="sample",
+            title=f"Sample Recall: {first_name} + {second_name}",
+            output_path=(
+                DIFFERENCE_PAIR_RECALL_DIR
+                / f"{first_channel}_{first_name}__"
+                f"{second_channel}_{second_name}.png"
+            ),
+            show=False,
+        )
+        # Save after every pair so an interrupted run retains partial progress.
+        save_difference_pair_comparison_csv(
+            difference_pair_results,
+            DIFFERENCE_PAIR_RESULTS_CSV,
+        )
+
+        del fold_results, result_summary, cv_splits, grouped_data
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+if difference_pair_results:
+    ranked_difference_pair_results = sort_difference_pair_results(
+        difference_pair_results
+    )
+    print_ranked_difference_pair_results(ranked_difference_pair_results)
+    save_difference_pair_comparison_csv(
+        ranked_difference_pair_results,
+        DIFFERENCE_PAIR_RESULTS_CSV,
+    )
+    plot_difference_pair_metric_heatmap(
+        ranked_difference_pair_results,
+        metric="pooled_sample_accuracy",
+        output_path=(
+            DIFFERENCE_PAIR_RESULTS_DIR / "sample_accuracy_heatmap.png"
+        ),
+        show=SHOW_RESULT_PLOTS,
+    )
+    plot_difference_pair_metric_heatmap(
+        ranked_difference_pair_results,
+        metric="sample_macro_f1",
+        output_path=(
+            DIFFERENCE_PAIR_RESULTS_DIR / "sample_macro_f1_heatmap.png"
+        ),
+        show=SHOW_RESULT_PLOTS,
+    )
+
+
 ## Train and evaluate all 10 channels separately
 single_channel_results = []
-single_channels = tuple(sorted(CHANNEL_NAMES))
+single_channels = tuple(range(10))
 if RUN_SINGLE_CHANNEL_COMPARISON:
     for channel_number, channel in enumerate(single_channels, start=1):
         channel_name = CHANNEL_NAMES[channel]
