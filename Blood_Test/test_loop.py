@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from Functions import (
+from Blood_Test.Functions import (
     append_pbs_complex_difference,
     append_pbs_plain_difference,
     apply_savgol_filter_nested,
@@ -15,8 +15,8 @@ from Functions import (
     load_blood_folder,
     print_blood_data_summary,
 )
-from Model import dataset, training
-from Model.channel_comparison import (
+from Blood_Test.Model import dataset, training
+from Blood_Test.Model.channel_comparison import (
     CHANNEL_NAMES,
     build_channel_comparison_result,
     build_original_difference_combinations,
@@ -30,7 +30,7 @@ from Model.channel_comparison import (
     sort_channel_comparison_results,
     sort_single_channel_results,
 )
-from Model.evaluation import (
+from Blood_Test.Model.evaluation import (
     plot_recall_matrix_with_numbers,
     print_result_summary,
     summarize_results,

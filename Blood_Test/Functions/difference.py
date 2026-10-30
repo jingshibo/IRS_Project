@@ -137,9 +137,13 @@ def append_pbs_complex_difference(
 
             complex_ratio_phase = np.angle(complex_values / (expanded_base + eps)).astype(np.float32, copy=False)
             complex_subtraction_magnitude = np.abs(complex_values - expanded_base).astype(np.float32, copy=False)
+            # Phase difference using complex conjugate
+            phase_conjugate_difference = np.angle(complex_values * np.conj(expanded_base)).astype(np.float32, copy=False)
+            cos_phase_difference = np.cos(phase_conjugate_difference).astype(np.float32, copy=False)
+            sin_phase_difference = np.sin(phase_conjugate_difference).astype(np.float32, copy=False)
 
             appended = np.stack(
-                (complex_ratio_phase, complex_subtraction_magnitude),
+                (complex_ratio_phase, complex_subtraction_magnitude, phase_conjugate_difference, cos_phase_difference, sin_phase_difference),
                 axis=-1,
             ).astype(np.float32, copy=False)
             ratio_data[sample_type][concentration] = np.concatenate(

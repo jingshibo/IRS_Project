@@ -1,7 +1,8 @@
+##
 import importlib
 from pathlib import Path
 
-from Functions import (
+from Blood_Test.Functions import (
     append_pbs_complex_difference,
     append_pbs_plain_difference,
     apply_savgol_filter_nested,
@@ -9,10 +10,14 @@ from Functions import (
     downsample_nested_data,
     exclude_data_blocks,
     load_blood_folder,
+    plot_difference_channel_samples,
+    plot_difference_channel_summary,
+    plot_filtering_comparison,
+    plot_raw_signal_representatives,
     print_blood_data_summary,
 )
-from Model import dataset, training
-from Model.evaluation import (
+from Blood_Test.Model import dataset, training
+from Blood_Test.Model.evaluation import (
     plot_recall_matrix_with_numbers,
     print_result_summary,
     summarize_results,
@@ -29,7 +34,7 @@ EXCLUDED_DATA_BLOCKS = (
 
 # Choose "leave_one_sample_out" for eight folds (S1-S8), or
 # "leave_one_set_out" for three folds (set 1-set 3).
-EVALUATION_METHOD = "leave_one_sample_out"
+EVALUATION_METHOD = "leave_one_set_out"
 
 raw_data = load_blood_folder(DATA_DIR)
 raw_data = exclude_data_blocks(
@@ -37,15 +42,17 @@ raw_data = exclude_data_blocks(
     excluded_blocks=EXCLUDED_DATA_BLOCKS,
 )
 print_blood_data_summary(raw_data)
+# plot_raw_signal_representatives(raw_data)
 
 
 ## Filter real/imaginary signals and recompute amplitude/phase
 filtered_data = apply_savgol_to_re_im_and_recompute(
     raw_data,
-    window_length=31,
+    window_length=101,
     polyorder=3,
 )
-print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
+print("Savitzky-Golay filtering completed: window_length=101, polyorder=3")
+# plot_filtering_comparison(raw_data, filtered_data)
 
 
 ## Calculate set-specific PBS-referenced features
@@ -65,6 +72,28 @@ filtered_difference_data = apply_savgol_filter_nested(
 )
 print("PBS difference calculation and Savitzky-Golay filtering completed")
 
+plot_difference_channel_samples(
+    complex_difference_data,
+    channel_indices=(8, 11, 12),
+    samples_per_group=4,
+    random_seed=42,
+)
+plot_difference_channel_summary(
+    complex_difference_data,
+    channel_indices=(8, 11, 12),
+)
+
+plot_difference_channel_samples(
+    filtered_difference_data,
+    channel_indices=(8, 11, 12),
+    samples_per_group=4,
+    random_seed=42,
+)
+plot_difference_channel_summary(
+    filtered_difference_data,
+    channel_indices=(8, 11, 12),
+)
+
 
 ## Downsample the processed signals
 # Keep every 100th frequency point, reducing 20,000 points to 200 while
@@ -83,7 +112,7 @@ print(
 # A group is one independent (set, concentration, sample), containing 5 repetitions.
 grouped_data = dataset.build_concentration_dataset(
     downsampled_difference_data,
-    channel_indices=(8,),  # complex_ratio_phase
+    channel_indices=(11, ),  # complex_ratio_phase
 )
 
 # Select either the eight-fold sample evaluation or the stricter three-fold
