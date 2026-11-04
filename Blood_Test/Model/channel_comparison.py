@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import csv
 from itertools import combinations, product
-from pathlib import Path
 from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
@@ -240,139 +238,10 @@ def print_ranked_single_channel_results(
         )
 
 
-def _matrix_columns(
-    prefix: str,
-    matrix: np.ndarray,
-    idx_to_label: Dict[int, str],
-) -> Dict[str, float | int]:
-    columns: Dict[str, float | int] = {}
-    for true_index in range(matrix.shape[0]):
-        for predicted_index in range(matrix.shape[1]):
-            true_label = idx_to_label[true_index]
-            predicted_label = idx_to_label[predicted_index]
-            columns[
-                f"{prefix}_true_{true_label}_pred_{predicted_label}"
-            ] = matrix[true_index, predicted_index].item()
-    return columns
-
-
-def _metric_columns(result: Dict[str, object]) -> Dict[str, object]:
-    return {
-        "mean_sample_accuracy": result["mean_sample_accuracy"],
-        "std_sample_accuracy": result["std_sample_accuracy"],
-        "pooled_sample_accuracy": result["pooled_sample_accuracy"],
-        "sample_macro_f1": result["sample_macro_f1"],
-        "mean_measurement_accuracy": result["mean_measurement_accuracy"],
-        "std_measurement_accuracy": result["std_measurement_accuracy"],
-        "pooled_measurement_accuracy": result["pooled_measurement_accuracy"],
-        "measurement_macro_f1": result["measurement_macro_f1"],
-        "elapsed_seconds": result["elapsed_seconds"],
-    }
-
-
-def _add_matrix_columns(
-    row: Dict[str, object],
-    result: Dict[str, object],
-) -> None:
-    idx_to_label = result["idx_to_label"]
-    row.update(
-        _matrix_columns(
-            "sample_confusion",
-            np.asarray(result["sample_confusion_matrix"]),
-            idx_to_label,
-        )
-    )
-    row.update(
-        _matrix_columns(
-            "sample_recall",
-            np.asarray(result["sample_recall_matrix"]),
-            idx_to_label,
-        )
-    )
-
-
-def _write_rows(rows: List[Dict[str, object]], output_path: str | Path) -> Path:
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-    return output
-
-
-def save_channel_comparison_csv(
-    results: Sequence[Dict[str, object]],
-    output_path: str | Path,
-) -> Path:
-    """Save ranked pair metrics plus all sample confusion/recall cells."""
-    ranked_results = sort_channel_comparison_results(results)
-    if not ranked_results:
-        raise ValueError("results must not be empty")
-    rows = []
-    for rank, result in enumerate(ranked_results, start=1):
-        row = {
-            "rank": rank,
-            "original_channel": result["original_channel"],
-            "original_name": result["original_name"],
-            "difference_channel": result["difference_channel"],
-            "difference_name": result["difference_name"],
-            **_metric_columns(result),
-        }
-        _add_matrix_columns(row, result)
-        rows.append(row)
-    return _write_rows(rows, output_path)
-
-
-def save_difference_pair_comparison_csv(
-    results: Sequence[Dict[str, object]],
-    output_path: str | Path,
-) -> Path:
-    """Save ranked difference-pair metrics and sample matrix cells."""
-    ranked_results = sort_difference_pair_results(results)
-    if not ranked_results:
-        raise ValueError("results must not be empty")
-    rows = []
-    for rank, result in enumerate(ranked_results, start=1):
-        row = {
-            "rank": rank,
-            "first_channel": result["first_channel"],
-            "first_name": result["first_name"],
-            "second_channel": result["second_channel"],
-            "second_name": result["second_name"],
-            **_metric_columns(result),
-        }
-        _add_matrix_columns(row, result)
-        rows.append(row)
-    return _write_rows(rows, output_path)
-
-
-def save_single_channel_comparison_csv(
-    results: Sequence[Dict[str, object]],
-    output_path: str | Path,
-) -> Path:
-    """Save ranked individual-channel metrics and sample matrix cells."""
-    ranked_results = sort_single_channel_results(results)
-    if not ranked_results:
-        raise ValueError("results must not be empty")
-    rows = []
-    for rank, result in enumerate(ranked_results, start=1):
-        row = {
-            "rank": rank,
-            "channel": result["channel"],
-            "channel_name": result["channel_name"],
-            **_metric_columns(result),
-        }
-        _add_matrix_columns(row, result)
-        rows.append(row)
-    return _write_rows(rows, output_path)
-
-
 def plot_channel_metric_heatmap(
     results: Sequence[Dict[str, object]],
     *,
     metric: str = "pooled_sample_accuracy",
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot an original-channel by difference-channel metric heatmap."""
@@ -416,7 +285,7 @@ def plot_channel_metric_heatmap(
         for column in range(matrix.shape[1]):
             if np.isfinite(matrix[row, column]):
                 ax.text(column, row, f"{matrix[row, column]:.3f}", ha="center", va="center")
-    _finish_plot(fig, output_path, show)
+    _finish_plot(fig, show)
     return fig, ax
 
 
@@ -424,7 +293,6 @@ def plot_difference_pair_metric_heatmap(
     results: Sequence[Dict[str, object]],
     *,
     metric: str = "pooled_sample_accuracy",
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot a symmetric metric heatmap for unordered difference-channel pairs."""
@@ -471,7 +339,7 @@ def plot_difference_pair_metric_heatmap(
                     ha="center",
                     va="center",
                 )
-    _finish_plot(fig, output_path, show)
+    _finish_plot(fig, show)
     return fig, ax
 
 
@@ -485,14 +353,9 @@ def _metric_title(metric: str) -> str:
 
 def _finish_plot(
     fig: plt.Figure,
-    output_path: str | Path | None,
     show: bool,
 ) -> None:
     fig.tight_layout()
-    if output_path is not None:
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=180, bbox_inches="tight")
     if show:
         plt.show()
     else:
@@ -503,7 +366,6 @@ def plot_single_channel_metric(
     results: Sequence[Dict[str, object]],
     *,
     metric: str = "pooled_sample_accuracy",
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot one metric for individual channels in descending order."""
@@ -536,5 +398,5 @@ def plot_single_channel_metric(
             va="bottom",
             fontsize=9,
         )
-    _finish_plot(fig, output_path, show)
+    _finish_plot(fig, show)
     return fig, ax

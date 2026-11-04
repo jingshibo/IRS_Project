@@ -1,8 +1,6 @@
-"""Draw a vector architecture figure from the actual blood CNN layers."""
+"""Display an architecture figure from the actual blood CNN layers."""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
@@ -47,13 +45,12 @@ def _shape_label(shape):
 
 def plot_model_architecture(
     *,
-    output_dir: str | Path,
     in_channels: int = 1,
     frequency_points: int = 200,
     channel_label: str = "Channel 10",
-    show: bool = False,
-) -> tuple[plt.Figure, dict[str, Path]]:
-    """Export the three-class CNN diagram as PNG, SVG, and PDF.
+    show: bool = True,
+) -> plt.Figure:
+    """Display the three-class CNN diagram and return its figure.
 
     Dimensions and layer labels come from a temporary model forward pass.
     The diagram describes one measurement; sample-level probability averaging
@@ -83,8 +80,6 @@ def plot_model_architecture(
     with plt.rc_context(
         {
             "font.family": "DejaVu Sans",
-            "svg.fonttype": "none",
-            "pdf.fonttype": 42,
         }
     ):
         fig, ax = plt.subplots(figsize=(20, 6.6), facecolor="white")
@@ -172,15 +167,8 @@ def plot_model_architecture(
             size=10, color="#526071",
         )
 
-        directory = Path(output_dir)
-        directory.mkdir(parents=True, exist_ok=True)
-        paths = {}
-        for extension in ("png", "svg", "pdf"):
-            path = directory / f"blood_concentration_cnn1d_architecture.{extension}"
-            fig.savefig(path, dpi=300, facecolor="white", bbox_inches="tight", pad_inches=0.12)
-            paths[extension] = path
         if show:
             plt.show()
         else:
             plt.close(fig)
-    return fig, paths
+    return fig

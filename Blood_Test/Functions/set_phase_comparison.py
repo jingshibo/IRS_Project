@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from itertools import combinations
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,7 +42,6 @@ def plot_pbs_representative_set_differences(
     representative_samples: dict[int, dict[str, dict]],
     *,
     include_representative_differences: bool = True,
-    output_dir: str | Path | None = None,
     show: bool = True,
 ):
     """Overlay PBS set-pair differences, with separate representative figures.
@@ -61,8 +59,8 @@ def plot_pbs_representative_set_differences(
     Return (figures, differences). The PBS figure is stored under
     ``figures['pbs']['combined']``; representative figures retain one-based
     set-pair keys. Numerical differences retain their original set-pair keys,
-    with representative arrays additionally keyed by concentration. Saved
-    PNGs use 300 DPI.
+    with representative arrays additionally keyed by concentration. Figures
+    are displayed live; numerical results remain available in memory.
     """
     try:
         pbs_block = np.asarray(pbs_data["PBS"]["reference"])
@@ -138,9 +136,6 @@ def plot_pbs_representative_set_differences(
     color_map = plt.get_cmap("tab10")
     colors = {c: color_map(i % 10) for i, c in enumerate(concentrations)}
     figures = {"pbs": {}, "representative": {}}
-    directory = Path(output_dir) if output_dir is not None else None
-    if directory is not None:
-        directory.mkdir(parents=True, exist_ok=True)
     for family, pair_differences in differences.items():
         finite_limits = []
         for values in pair_differences.values():
@@ -164,7 +159,6 @@ def plot_pbs_representative_set_differences(
                         color=color_map(index % 10),
                     )
                 title = "Baseline Phase Differences Between Sets"
-                filename = "pbs_phase_differences_combined.png"
             else:
                 first_set, second_set = figure_key
                 pair_label = f"Set {first_set} - Set {second_set}"
@@ -179,7 +173,6 @@ def plot_pbs_representative_set_differences(
                         color=colors[concentration],
                     )
                 title = f"Representative Phase Differences: {pair_label}"
-                filename = f"representative_phase_difference_set_{first_set}_minus_{second_set}.png"
                 if not values:
                     ax.text(0.5, 0.5, "No shared concentration samples", transform=ax.transAxes, ha="center")
             ax.axhline(0, color="black", linestyle="--", linewidth=0.8, alpha=0.55)
@@ -196,8 +189,6 @@ def plot_pbs_representative_set_differences(
             if family == "pbs" or values:
                 ax.legend(loc="best", frameon=False)
             fig.tight_layout()
-            if directory is not None:
-                fig.savefig(directory / filename, dpi=300, bbox_inches="tight")
             figures[family][figure_key] = (fig, ax)
             if show:
                 plt.show()
@@ -235,7 +226,6 @@ def plot_original_phase_set_differences(
     filtered_data: dict[str, dict[str, np.ndarray]],
     representative_samples: dict[int, dict[str, dict]],
     *,
-    output_dir: str | Path | None = None,
     y_min: float | None = -0.15,
     show: bool = True,
 ):
@@ -250,7 +240,7 @@ def plot_original_phase_set_differences(
     Return (figures, differences), keyed by concentration. Difference arrays
     are additionally keyed by one-based set pair, e.g. differences['10-4'][(1,2)].
     Set-pair colours and upper limits are shared across figures. Set y_min=None
-    to show the full data range. Saving produces a 300-DPI PNG per concentration.
+    to show the full data range. Figures are displayed live.
     """
     if "SAU" not in filtered_data:
         raise KeyError("filtered_data must contain SAU measurements")
@@ -290,9 +280,6 @@ def plot_original_phase_set_differences(
     if not differences:
         raise ValueError("No concentration has representative samples in at least two sets")
 
-    directory = Path(output_dir) if output_dir is not None else None
-    if directory is not None:
-        directory.mkdir(parents=True, exist_ok=True)
     color_map = plt.get_cmap("tab10")
     colors = {pair: color_map(index % 10) for index, pair in enumerate(all_pairs)}
     figures = {}
@@ -319,9 +306,6 @@ def plot_original_phase_set_differences(
         ax.spines[["top", "right"]].set_visible(False)
         ax.legend(loc="best", frameon=False)
         fig.tight_layout()
-        if directory is not None:
-            filename = f"original_phase_differences_{concentration}.png"
-            fig.savefig(directory / filename, dpi=300, bbox_inches="tight")
         figures[concentration] = (fig, ax)
         if show:
             plt.show()

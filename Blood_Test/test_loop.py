@@ -29,9 +29,6 @@ from Blood_Test.Model.channel_comparison import (
     print_ranked_difference_pair_results,
     print_ranked_channel_results,
     print_ranked_single_channel_results,
-    save_channel_comparison_csv,
-    save_difference_pair_comparison_csv,
-    save_single_channel_comparison_csv,
     sort_channel_comparison_results,
     sort_difference_pair_results,
     sort_single_channel_results,
@@ -65,6 +62,7 @@ RUN_TWO_CHANNEL_COMPARISON = False
 RUN_DIFFERENCE_PAIR_COMPARISON = True
 RUN_SINGLE_CHANNEL_COMPARISON = False
 SHOW_RESULT_PLOTS = True
+# Display figures live; result lists and matrices remain in console memory.
 
 raw_data = load_blood_folder(DATA_DIR)
 raw_data = exclude_data_blocks(
@@ -129,24 +127,6 @@ if EVALUATION_METHOD not in {"leave_one_sample_out", "leave_one_set_out"}:
         "EVALUATION_METHOD must be 'leave_one_sample_out' or "
         f"'leave_one_set_out', got {EVALUATION_METHOD!r}"
     )
-
-RESULTS_ROOT = (
-    Path(__file__).resolve().parent
-    / "loop_results"
-    / EVALUATION_METHOD
-)
-PAIR_RESULTS_DIR = RESULTS_ROOT / "two_channel_combinations"
-PAIR_RECALL_DIR = PAIR_RESULTS_DIR / "recall_matrices"
-PAIR_RESULTS_CSV = PAIR_RESULTS_DIR / "channel_comparison_results.csv"
-DIFFERENCE_PAIR_RESULTS_DIR = RESULTS_ROOT / "difference_channel_pairs"
-DIFFERENCE_PAIR_RECALL_DIR = DIFFERENCE_PAIR_RESULTS_DIR / "recall_matrices"
-DIFFERENCE_PAIR_RESULTS_CSV = (
-    DIFFERENCE_PAIR_RESULTS_DIR / "difference_pair_results.csv"
-)
-SINGLE_RESULTS_DIR = RESULTS_ROOT / "individual_channels"
-SINGLE_RECALL_DIR = SINGLE_RESULTS_DIR / "recall_matrices"
-SINGLE_RESULTS_CSV = SINGLE_RESULTS_DIR / "single_channel_results.csv"
-
 
 def build_selected_channel_splits(channel_indices):
     """Build one dataset and the evaluation folds selected above."""
@@ -227,15 +207,8 @@ if RUN_TWO_CHANNEL_COMPARISON:
             result_summary,
             level="sample",
             title=f"Sample Recall: {original_name} + {difference_name}",
-            output_path=(
-                PAIR_RECALL_DIR
-                / f"{original_channel}_{original_name}__"
-                f"{difference_channel}_{difference_name}.png"
-            ),
-            show=False,
+            show=SHOW_RESULT_PLOTS,
         )
-        # Save after every pair so an interrupted run retains partial progress.
-        save_channel_comparison_csv(pair_results, PAIR_RESULTS_CSV)
 
         del fold_results, result_summary, cv_splits, grouped_data
         gc.collect()
@@ -246,17 +219,14 @@ if RUN_TWO_CHANNEL_COMPARISON:
 if pair_results:
     ranked_pair_results = sort_channel_comparison_results(pair_results)
     print_ranked_channel_results(ranked_pair_results)
-    save_channel_comparison_csv(ranked_pair_results, PAIR_RESULTS_CSV)
     plot_channel_metric_heatmap(
         ranked_pair_results,
         metric="pooled_sample_accuracy",
-        output_path=PAIR_RESULTS_DIR / "sample_accuracy_heatmap.png",
         show=SHOW_RESULT_PLOTS,
     )
     plot_channel_metric_heatmap(
         ranked_pair_results,
         metric="sample_macro_f1",
-        output_path=PAIR_RESULTS_DIR / "sample_macro_f1_heatmap.png",
         show=SHOW_RESULT_PLOTS,
     )
 
@@ -307,17 +277,7 @@ if RUN_DIFFERENCE_PAIR_COMPARISON:
             result_summary,
             level="sample",
             title=f"Sample Recall: {first_name} + {second_name}",
-            output_path=(
-                DIFFERENCE_PAIR_RECALL_DIR
-                / f"{first_channel}_{first_name}__"
-                f"{second_channel}_{second_name}.png"
-            ),
-            show=False,
-        )
-        # Save after every pair so an interrupted run retains partial progress.
-        save_difference_pair_comparison_csv(
-            difference_pair_results,
-            DIFFERENCE_PAIR_RESULTS_CSV,
+            show=SHOW_RESULT_PLOTS,
         )
 
         del fold_results, result_summary, cv_splits, grouped_data
@@ -331,24 +291,14 @@ if difference_pair_results:
         difference_pair_results
     )
     print_ranked_difference_pair_results(ranked_difference_pair_results)
-    save_difference_pair_comparison_csv(
-        ranked_difference_pair_results,
-        DIFFERENCE_PAIR_RESULTS_CSV,
-    )
     plot_difference_pair_metric_heatmap(
         ranked_difference_pair_results,
         metric="pooled_sample_accuracy",
-        output_path=(
-            DIFFERENCE_PAIR_RESULTS_DIR / "sample_accuracy_heatmap.png"
-        ),
         show=SHOW_RESULT_PLOTS,
     )
     plot_difference_pair_metric_heatmap(
         ranked_difference_pair_results,
         metric="sample_macro_f1",
-        output_path=(
-            DIFFERENCE_PAIR_RESULTS_DIR / "sample_macro_f1_heatmap.png"
-        ),
         show=SHOW_RESULT_PLOTS,
     )
 
@@ -390,13 +340,7 @@ if RUN_SINGLE_CHANNEL_COMPARISON:
             result_summary,
             level="sample",
             title=f"Sample Recall: {channel_name}",
-            output_path=SINGLE_RECALL_DIR / f"{channel}_{channel_name}.png",
-            show=False,
-        )
-        # Save after every channel so an interrupted run retains partial progress.
-        save_single_channel_comparison_csv(
-            single_channel_results,
-            SINGLE_RESULTS_CSV,
+            show=SHOW_RESULT_PLOTS,
         )
 
         del fold_results, result_summary, cv_splits, grouped_data
@@ -408,16 +352,13 @@ if RUN_SINGLE_CHANNEL_COMPARISON:
 if single_channel_results:
     ranked_single_results = sort_single_channel_results(single_channel_results)
     print_ranked_single_channel_results(ranked_single_results)
-    save_single_channel_comparison_csv(ranked_single_results, SINGLE_RESULTS_CSV)
     plot_single_channel_metric(
         ranked_single_results,
         metric="pooled_sample_accuracy",
-        output_path=SINGLE_RESULTS_DIR / "sample_accuracy.png",
         show=SHOW_RESULT_PLOTS,
     )
     plot_single_channel_metric(
         ranked_single_results,
         metric="sample_macro_f1",
-        output_path=SINGLE_RESULTS_DIR / "sample_macro_f1.png",
         show=SHOW_RESULT_PLOTS,
     )

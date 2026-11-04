@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, List
 
 import matplotlib.pyplot as plt
@@ -95,7 +94,6 @@ def plot_recall_matrix_with_numbers(
     level: str = "sample",
     cmap: str = "Blues",
     title: str | None = None,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     level = level.lower()
@@ -136,10 +134,6 @@ def plot_recall_matrix_with_numbers(
             )
 
     fig.tight_layout()
-    if output_path is not None:
-        output = Path(output_path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=180, bbox_inches="tight")
     if show:
         plt.show()
     else:

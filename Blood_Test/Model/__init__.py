@@ -14,8 +14,6 @@ from .channel_comparison import (
     plot_single_channel_metric,
     print_ranked_channel_results,
     print_ranked_single_channel_results,
-    save_channel_comparison_csv,
-    save_single_channel_comparison_csv,
     sort_channel_comparison_results,
     sort_single_channel_results,
 )
@@ -41,8 +39,6 @@ __all__ = [
     "plot_single_channel_metric",
     "print_ranked_channel_results",
     "print_ranked_single_channel_results",
-    "save_channel_comparison_csv",
-    "save_single_channel_comparison_csv",
     "sort_channel_comparison_results",
     "sort_single_channel_results",
 ]

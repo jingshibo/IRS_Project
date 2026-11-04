@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -74,7 +72,6 @@ def plot_representative_channel_samples(
     *,
     channel_index: int = 8,
     reference_label: str | None = None,
-    output_path: str | Path | None = None,
     show: bool = True,
     verbose: bool = True,
 ) -> tuple[dict[int, tuple[plt.Figure, plt.Axes]], dict[int, dict[str, dict]]]:
@@ -91,7 +88,6 @@ def plot_representative_channel_samples(
     Prefer ``complex_difference_data`` before second smoothing/downsampling.
     Return figures and selection metadata keyed by set number/concentration;
     metadata includes the selected ``mean_trace`` for subsequent comparisons.
-    Saving appends ``_set_N`` to the requested filename stem.
     """
     if "SAU" not in data or not data["SAU"]:
         raise KeyError("data must contain at least one SAU concentration")
@@ -169,14 +165,6 @@ def plot_representative_channel_samples(
         if traces:
             ax.legend(loc="best", frameon=False)
         fig.tight_layout()
-        if output_path is not None:
-            requested_output = Path(output_path)
-            suffix = requested_output.suffix or ".png"
-            set_output = requested_output.with_name(
-                f"{requested_output.stem}_set_{set_number}{suffix}"
-            )
-            set_output.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(set_output, dpi=300, bbox_inches="tight")
         figures[set_number] = (fig, ax)
         if show:
             plt.show()
@@ -188,7 +176,6 @@ def plot_representative_channel_samples(
 def plot_representative_sets_by_concentration(
     representative_samples: dict[int, dict[str, dict]],
     *,
-    output_dir: str | Path | None = None,
     show: bool = True,
 ) -> dict[str, tuple[plt.Figure, plt.Axes]]:
     """Overlay the existing set representatives in one figure per concentration.
@@ -226,9 +213,6 @@ def plot_representative_sets_by_concentration(
     if len(channel_indices) > 1 or len(signal_lengths) > 1:
         raise ValueError("Representative curves must use one phase channel and matching lengths")
 
-    directory = Path(output_dir) if output_dir is not None else None
-    if directory is not None:
-        directory.mkdir(parents=True, exist_ok=True)
     color_map = plt.get_cmap("tab10")
     figures = {}
     for concentration in sorted(concentrations, key=_concentration_sort_key):
@@ -264,9 +248,6 @@ def plot_representative_sets_by_concentration(
         ax.spines[["top", "right"]].set_visible(False)
         ax.legend(loc="best", frameon=False)
         fig.tight_layout()
-        if directory is not None:
-            filename = f"representative_sets_{concentration}.png"
-            fig.savefig(directory / filename, dpi=300, bbox_inches="tight")
         figures[concentration] = (fig, ax)
         if show:
             plt.show()

@@ -47,10 +47,7 @@ EVALUATION_METHOD = "leave_one_set_out"
 PBS_REFERENCE_MODE = "own_set"
 
 raw_data = load_blood_folder(DATA_DIR)
-raw_data = exclude_data_blocks(
-    raw_data,
-    excluded_blocks=EXCLUDED_DATA_BLOCKS,
-)
+raw_data = exclude_data_blocks(raw_data, excluded_blocks=EXCLUDED_DATA_BLOCKS)
 print_blood_data_summary(raw_data)
 # plot_raw_signal_representatives(raw_data)
 
@@ -64,7 +61,7 @@ filtered_data = apply_savgol_to_re_im_and_recompute(
 print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
 # plot_filtering_comparison(raw_data, filtered_data)
 # plot_pbs_set_differences(filtered_data)
-plot_bacterial_set_differences(filtered_data)
+# plot_bacterial_set_differences(filtered_data)
 
 
 ## Compare bacterial set means after corresponding own-set PBS correction
@@ -109,29 +106,29 @@ print(
     "PBS difference calculation and Savitzky-Golay filtering completed: "
     f"reference_mode={PBS_REFERENCE_MODE}"
 )
-channel_indices = (10, )
+channel_indices = (8, )
 
-plot_difference_channel_samples(
-    complex_difference_data,
-    channel_indices=channel_indices,
-    samples_per_group=4,
-    random_seed=42,
-)
-plot_difference_channel_summary(
-    complex_difference_data,
-    channel_indices=channel_indices,
-)
-
-plot_difference_channel_samples(
-    filtered_difference_data,
-    channel_indices=channel_indices,
-    samples_per_group=4,
-    random_seed=42,
-)
-plot_difference_channel_summary(
-    filtered_difference_data,
-    channel_indices=channel_indices,
-)
+# plot_difference_channel_samples(
+#     complex_difference_data,
+#     channel_indices=channel_indices,
+#     samples_per_group=4,
+#     random_seed=42,
+# )
+# plot_difference_channel_summary(
+#     complex_difference_data,
+#     channel_indices=channel_indices,
+# )
+#
+# plot_difference_channel_samples(
+#     filtered_difference_data,
+#     channel_indices=channel_indices,
+#     samples_per_group=4,
+#     random_seed=42,
+# )
+# plot_difference_channel_summary(
+#     filtered_difference_data,
+#     channel_indices=channel_indices,
+# )
 
 
 ## One closest-to-mean sample per concentration, with one figure per set

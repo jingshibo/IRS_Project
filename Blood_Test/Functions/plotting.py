@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from itertools import combinations
-from pathlib import Path
 from typing import Dict
 
 import matplotlib.pyplot as plt
@@ -109,7 +108,6 @@ def _difference_plot_groups(
 def plot_pbs_set_differences(
     data: Dict[str, Dict[str, np.ndarray]],
     *,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Compare the mean complex PBS signal between every pair of sets.
@@ -176,12 +174,6 @@ def plot_pbs_set_differences(
 
     fig.suptitle("Pairwise Differences Between Mean PBS Signals", fontsize=15)
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
-    if output_path is not None:
-        output = Path(output_path)
-        if not output.suffix:
-            output = output.with_suffix(".png")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=180, bbox_inches="tight")
     if show:
         plt.show()
     else:
@@ -247,7 +239,6 @@ def plot_bacterial_set_differences(
     *,
     channel_indices: tuple[int, ...] = (0, 1, 2, 3),
     comparison_label: str | None = None,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> dict[str, tuple[plt.Figure, np.ndarray]]:
     """Compare set-level mean SAU signals within each concentration.
@@ -365,14 +356,6 @@ def plot_bacterial_set_differences(
             figure_title += f"\n{comparison_label}"
         fig.suptitle(figure_title, fontsize=15)
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
-        if output_path is not None:
-            requested_output = Path(output_path)
-            suffix = requested_output.suffix or ".png"
-            concentration_output = requested_output.with_name(
-                f"{requested_output.stem}_{concentration}{suffix}"
-            )
-            concentration_output.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(concentration_output, dpi=180, bbox_inches="tight")
 
         figures[concentration] = (fig, axes)
         if show:
@@ -388,7 +371,6 @@ def plot_raw_signal_representatives(
     *,
     samples_per_group: int = 4,
     random_seed: int | None = 42,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> dict[int, tuple[plt.Figure, np.ndarray]]:
     """
@@ -399,9 +381,6 @@ def plot_raw_signal_representatives(
     biological samples are selected without replacement in each group. Each
     curve averages that sample's valid repetitions; phase uses a circular mean.
     All-NaN excluded blocks are shown as unavailable.
-
-    When ``output_path`` is supplied, the set number is appended to its stem,
-    for example ``raw_signals_set_1.png``.
     """
     if "SAU" not in raw_data or not raw_data["SAU"]:
         raise KeyError("raw_data must contain at least one SAU concentration")
@@ -527,15 +506,6 @@ def plot_raw_signal_representatives(
         )
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
 
-        if output_path is not None:
-            requested_output = Path(output_path)
-            suffix = requested_output.suffix or ".png"
-            set_output = requested_output.with_name(
-                f"{requested_output.stem}_set_{set_index + 1}{suffix}"
-            )
-            set_output.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(set_output, dpi=180, bbox_inches="tight")
-
         figures[set_index + 1] = (fig, axes)
         # PyCharm's plot backend may retain only the final active figure when a
         # single show() follows a loop. Showing here registers every set figure.
@@ -553,7 +523,6 @@ def plot_filtering_comparison(
     *,
     samples_per_group: int = 4,
     random_seed: int | None = 42,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> dict[int, tuple[plt.Figure, np.ndarray]]:
     """Overlay raw and filtered sample-averaged amplitude/phase traces."""
@@ -741,15 +710,6 @@ def plot_filtering_comparison(
         )
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
 
-        if output_path is not None:
-            requested_output = Path(output_path)
-            suffix = requested_output.suffix or ".png"
-            set_output = requested_output.with_name(
-                f"{requested_output.stem}_set_{set_index + 1}{suffix}"
-            )
-            set_output.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(set_output, dpi=180, bbox_inches="tight")
-
         figures[set_index + 1] = (fig, axes)
         if show:
             plt.show()
@@ -765,7 +725,6 @@ def plot_difference_channel_samples(
     channel_indices: tuple[int, ...] = (8, 9),
     samples_per_group: int = 4,
     random_seed: int | None = 42,
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> dict[int, tuple[plt.Figure, np.ndarray]]:
     """Plot random sample-averaged PBS-referenced feature traces by set."""
@@ -853,14 +812,6 @@ def plot_difference_channel_samples(
             fontsize=15,
         )
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
-        if output_path is not None:
-            requested_output = Path(output_path)
-            suffix = requested_output.suffix or ".png"
-            set_output = requested_output.with_name(
-                f"{requested_output.stem}_set_{set_index + 1}{suffix}"
-            )
-            set_output.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(set_output, dpi=180, bbox_inches="tight")
 
         figures[set_index + 1] = (fig, axes)
         if show:
@@ -874,7 +825,6 @@ def plot_difference_channel_summary(
     data: Dict[str, Dict[str, np.ndarray]],
     *,
     channel_indices: tuple[int, ...] = (8, 9),
-    output_path: str | Path | None = None,
     show: bool = True,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Plot set rows by channel columns with concentration mean +/- sample SD."""
@@ -955,12 +905,6 @@ def plot_difference_channel_summary(
         fontsize=15,
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
-    if output_path is not None:
-        output = Path(output_path)
-        if not output.suffix:
-            output = output.with_suffix(".png")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=180, bbox_inches="tight")
     if show:
         plt.show()
     else:
