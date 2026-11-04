@@ -9,6 +9,7 @@ from Blood_Test.Functions import (
     apply_savgol_to_re_im_and_recompute,
     downsample_nested_data,
     exclude_data_blocks,
+    exclude_frequency_bands,
     load_blood_folder,
     plot_bacterial_set_differences,
     plot_difference_channel_samples,
@@ -33,10 +34,25 @@ from Blood_Test.Model.evaluation import (
 ## Load the raw data in PyCharm/Python console mode
 DATA_DIR = Path(r"/home/shibojing/data/blood")
 
+# Single channel selection for representative plots, processed-signal plots,
+# and model input. Channel 8 = complex ratio phase; 10 = conjugate-product
+# phase difference. The set-phase comparison plots require channel 3, 8, or 10.
+CHANNEL_INDEX = 8
+
 # Optional exclusions use: (sample type, set number, concentration).
 # Use an empty tuple () to include every measurement.
 EXCLUDED_DATA_BLOCKS = (
 )
+
+# Frequency bands use zero-based indices in the ORIGINAL 20,000-point signal,
+# including both endpoints. Apply the same exclusions to every measurement.
+# Start with the narrow peak near index 8890; edit/add bands as needed.
+# Set EXCLUDED_FREQUENCY_BANDS = () to keep the complete signal.
+EXCLUDED_FREQUENCY_BANDS = (
+    (8800, 9000),
+    # (10500, 10700),  # Example of a second band.
+)
+DOWNSAMPLE_RATIO = 100
 
 # Choose "leave_one_sample_out" for eight folds (S1-S8), or
 # "leave_one_set_out" for three folds (set 1-set 3).
@@ -106,37 +122,36 @@ print(
     "PBS difference calculation and Savitzky-Golay filtering completed: "
     f"reference_mode={PBS_REFERENCE_MODE}"
 )
-channel_indices = (8, )
 
 # plot_difference_channel_samples(
 #     complex_difference_data,
-#     channel_indices=channel_indices,
+#     channel_indices=(CHANNEL_INDEX,),
 #     samples_per_group=4,
 #     random_seed=42,
 # )
 # plot_difference_channel_summary(
 #     complex_difference_data,
-#     channel_indices=channel_indices,
+#     channel_indices=(CHANNEL_INDEX,),
 # )
 #
 # plot_difference_channel_samples(
 #     filtered_difference_data,
-#     channel_indices=channel_indices,
+#     channel_indices=(CHANNEL_INDEX,),
 #     samples_per_group=4,
 #     random_seed=42,
 # )
 # plot_difference_channel_summary(
 #     filtered_difference_data,
-#     channel_indices=channel_indices,
+#     channel_indices=(CHANNEL_INDEX,),
 # )
 
 
 ## One closest-to-mean sample per concentration, with one figure per set
-# Use channel 8 from filtered_difference_data, before downsampling. The function
-# reports the selected biological sample and its circular RMSE to the mean.
+# Use CHANNEL_INDEX from filtered_difference_data, before downsampling. The
+# function reports the selected biological sample and its distance to the mean.
 representative_figures, representative_samples = plot_representative_channel_samples(
     filtered_difference_data,
-    channel_index=8,
+    channel_index=CHANNEL_INDEX,
 )
 
 
@@ -155,7 +170,8 @@ representative_set_comparison_figures = plot_representative_sets_by_concentratio
 
 ## Original filtered phase differences, reusing the same selected sample IDs
 # Read channel 3 from filtered_data before PBS correction. One figure per
-# concentration overlays Set 1-2, Set 1-3, Set 2-3. Do not use channel-8 curves.
+# concentration overlays Set 1-2, Set 1-3, Set 2-3. The selected channel above
+# determines sample IDs only; this diagnostic always compares original phase.
 original_phase_difference_figures, original_phase_differences = plot_original_phase_set_differences(
     filtered_data,
     representative_samples,
@@ -163,11 +179,11 @@ original_phase_difference_figures, original_phase_differences = plot_original_ph
 
 
 ## Downsample the processed signals
-# Keep every 100th frequency point, reducing 20,000 points to 200 while
-# preserving every set, sample, repetition, and all 10 signal channels.
+# Keep every DOWNSAMPLE_RATIO-th frequency point, preserving every set, sample,
+# repetition, and all thirteen signal channels.
 downsampled_difference_data = downsample_nested_data(
     filtered_difference_data,
-    ratio=100,
+    ratio=DOWNSAMPLE_RATIO,
 )
 print(
     "Downsampling completed: "
@@ -175,11 +191,45 @@ print(
 )
 
 
+## Exclude selected frequency bands from the model input
+# Keep the full processed arrays above for live plots and baseline comparison.
+# Select AFTER smoothing/downsampling so retained frequency positions do not
+# shift and the filters never operate across a newly created gap.
+# retained_frequency_indices maps the selected input back to original indices.
+selected_difference_data, retained_frequency_indices = exclude_frequency_bands(
+    downsampled_difference_data,
+    excluded_bands=EXCLUDED_FREQUENCY_BANDS,
+    original_frequency_points=filtered_difference_data["SAU"]["10-4"].shape[-2],
+    downsample_ratio=DOWNSAMPLE_RATIO,
+)
+print(
+    f"Frequency selection: excluded bands={EXCLUDED_FREQUENCY_BANDS}; "
+    f"kept {len(retained_frequency_indices)}/"
+    f"{downsampled_difference_data['SAU']['10-4'].shape[-2]} downsampled points; "
+    f"SAU 10-4 shape={selected_difference_data['SAU']['10-4'].shape}"
+)
+
+
+## Inspect the downsampled signals AFTER frequency-band exclusion
+# One live figure per set, with PBS and concentrations in separate rows.
+# Show all eight independent SAU samples, averaging repetitions per sample.
+# Markers use consecutive selected-point indices (0-196 when three of 200
+# points are removed); automatic y limits display the full peak depths.
+downsampled_signal_figures = plot_difference_channel_samples(
+    selected_difference_data,
+    channel_indices=(CHANNEL_INDEX,),
+    samples_per_group=8,
+    frequency_step=1,
+    marker="o",
+    plot_label="After downsampling and frequency-band exclusion",
+)
+
+
 ## Build the three-class concentration dataset and grouped CV splits
 # A group is one independent (set, concentration, sample), containing 5 repetitions.
 grouped_data = dataset.build_concentration_dataset(
-    downsampled_difference_data,
-    channel_indices=(10, ),  # complex_ratio_phase
+    selected_difference_data,
+    channel_indices=(CHANNEL_INDEX,),
 )
 
 # Select either the eight-fold sample evaluation or the stricter three-fold

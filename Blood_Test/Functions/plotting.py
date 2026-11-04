@@ -725,11 +725,28 @@ def plot_difference_channel_samples(
     channel_indices: tuple[int, ...] = (8, 9),
     samples_per_group: int = 4,
     random_seed: int | None = 42,
+    frequency_step: int = 1,
+    marker: str | None = None,
+    plot_label: str | None = None,
     show: bool = True,
 ) -> dict[int, tuple[plt.Figure, np.ndarray]]:
-    """Plot random sample-averaged PBS-referenced feature traces by set."""
+    """Plot sample-averaged PBS-referenced feature traces by set.
+
+    Use frequency_step equal to the downsampling ratio to label a complete
+    downsampled grid with ORIGINAL signal indices. This assumes index zero is
+    retained and no frequency bands have yet been removed. Optional markers
+    show actual retained points. Y limits are automatic so peaks are visible.
+    Request at least the number of available samples to show every sample;
+    otherwise select reproducibly with random_seed. Phase averages are circular.
+    """
     if samples_per_group < 1:
         raise ValueError("samples_per_group must be >= 1")
+    if (
+        isinstance(frequency_step, (bool, np.bool_))
+        or not isinstance(frequency_step, (int, np.integer))
+        or frequency_step < 1
+    ):
+        raise ValueError("frequency_step must be a positive integer")
     groups, blocks = _difference_plot_groups(data)
     number_of_sets = _validate_plot_blocks(
         blocks,
@@ -784,6 +801,7 @@ def plot_difference_channel_samples(
                         if trace is None:
                             continue
                         ax.plot(
+                            np.arange(len(trace)) * frequency_step,
                             trace,
                             color=(
                                 "black"
@@ -792,6 +810,8 @@ def plot_difference_channel_samples(
                             ),
                             linestyle="--" if group_index == 0 else "-",
                             linewidth=1.1,
+                            marker=marker,
+                            markersize=3,
                             alpha=0.9,
                             label=f"S{int(sample_index) + 1}",
                         )
@@ -801,14 +821,18 @@ def plot_difference_channel_samples(
                 if column_index == 0:
                     ax.set_ylabel(label)
                 if group_index == len(groups) - 1:
-                    ax.set_xlabel("Frequency point index")
+                    ax.set_xlabel(
+                        "Original frequency point index"
+                        if frequency_step != 1 else "Frequency point index"
+                    )
                 ax.grid(True, alpha=0.25)
                 if len(group_samples) > 0:
                     ax.legend(loc="upper right", fontsize=7, frameon=False)
 
         fig.suptitle(
             f"Set {set_index + 1}: PBS-Referenced Channels "
-            + ", ".join(str(index) for index in channel_indices),
+            + ", ".join(str(index) for index in channel_indices)
+            + (f"\n{plot_label}" if plot_label else ""),
             fontsize=15,
         )
         fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))

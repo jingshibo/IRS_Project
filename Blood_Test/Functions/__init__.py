@@ -1,5 +1,5 @@
 from .data_loader import load_blood_folder, print_blood_data_summary
-from .data_selection import exclude_data_blocks
+from .data_selection import exclude_data_blocks, exclude_frequency_bands
 from .difference import append_pbs_complex_difference, append_pbs_plain_difference
 from .preprocessing import (
     apply_savgol_filter_nested,
@@ -31,6 +31,7 @@ __all__ = [
     "apply_savgol_to_re_im_and_recompute",
     "downsample_nested_data",
     "exclude_data_blocks",
+    "exclude_frequency_bands",
     "load_blood_folder",
     "plot_bacterial_set_differences",
     "plot_difference_channel_samples",
