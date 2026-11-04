@@ -7,10 +7,20 @@ from .preprocessing import (
     downsample_nested_data,
 )
 from .plotting import (
+    plot_bacterial_set_differences,
     plot_difference_channel_samples,
     plot_difference_channel_summary,
     plot_filtering_comparison,
+    plot_pbs_set_differences,
     plot_raw_signal_representatives,
+)
+from .representative_plotting import (
+    plot_representative_channel_samples,
+    plot_representative_sets_by_concentration,
+)
+from .set_phase_comparison import (
+    plot_original_phase_set_differences,
+    plot_pbs_representative_set_differences,
 )
 
 
@@ -22,9 +32,15 @@ __all__ = [
     "downsample_nested_data",
     "exclude_data_blocks",
     "load_blood_folder",
+    "plot_bacterial_set_differences",
     "plot_difference_channel_samples",
     "plot_difference_channel_summary",
     "plot_filtering_comparison",
+    "plot_original_phase_set_differences",
+    "plot_pbs_set_differences",
+    "plot_pbs_representative_set_differences",
     "plot_raw_signal_representatives",
+    "plot_representative_channel_samples",
+    "plot_representative_sets_by_concentration",
     "print_blood_data_summary",
 ]

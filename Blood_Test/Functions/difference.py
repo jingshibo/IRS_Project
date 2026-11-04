@@ -4,14 +4,18 @@ from typing import Dict
 
 import numpy as np
 
-from .data_loader import IM_IDX, RE_IDX
+from .data_loader import AMP_IDX, IM_IDX, PHASE_IDX, RE_IDX
 
 
-def _get_set_specific_pbs_reference(
+PBS_REFERENCE_MODES = {"own_set", "other_sets_mean"}
+
+
+def _get_pbs_reference(
     data: Dict[str, Dict[str, np.ndarray]],
     *,
     pbs_sample_type: str,
     pbs_concentration: str,
+    reference_mode: str,
 ) -> np.ndarray:
     if (
         pbs_sample_type not in data
@@ -32,7 +36,37 @@ def _get_set_specific_pbs_reference(
         )
 
     # Preserve the set axis and average PBS samples/repetitions within each set.
-    return np.nanmean(pbs_block, axis=(1, 2), dtype=np.float32)
+    set_means = np.nanmean(pbs_block, axis=(1, 2), dtype=np.float32)
+    if reference_mode == "own_set":
+        return set_means
+    if reference_mode != "other_sets_mean":
+        raise ValueError(
+            f"reference_mode must be one of {sorted(PBS_REFERENCE_MODES)}, "
+            f"got {reference_mode!r}"
+        )
+    if set_means.shape[0] < 2:
+        raise ValueError(
+            "reference_mode='other_sets_mean' requires at least two PBS sets"
+        )
+
+    references = np.empty_like(set_means)
+    for target_set in range(set_means.shape[0]):
+        other_sets = np.delete(set_means, target_set, axis=0)
+        references[target_set] = np.nanmean(
+            other_sets,
+            axis=0,
+            dtype=np.float32,
+        )
+
+    # Average cross-set references in the complex plane, then derive amplitude
+    # and phase from the averaged real and imaginary components.
+    if references.shape[-1] > PHASE_IDX:
+        complex_reference = (
+            references[..., RE_IDX] + 1j * references[..., IM_IDX]
+        )
+        references[..., AMP_IDX] = np.abs(complex_reference)
+        references[..., PHASE_IDX] = np.angle(complex_reference)
+    return references
 
 
 def append_pbs_plain_difference(
@@ -40,9 +74,14 @@ def append_pbs_plain_difference(
     *,
     pbs_sample_type: str = "PBS",
     pbs_concentration: str = "reference",
+    reference_mode: str = "own_set",
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
-    Append pointwise differences from each set's mean PBS reference trace.
+    Append pointwise differences from the selected mean PBS reference trace.
+
+    ``reference_mode='own_set'`` uses each set's own mean PBS. With
+    ``reference_mode='other_sets_mean'``, each target set uses the pointwise
+    mean PBS from all other sets.
 
     Input channels::
 
@@ -53,10 +92,11 @@ def append_pbs_plain_difference(
         [real, imaginary, amplitude, phase,
          delta_real, delta_imaginary, delta_amplitude, delta_phase]
     """
-    pbs_reference = _get_set_specific_pbs_reference(
+    pbs_reference = _get_pbs_reference(
         data,
         pbs_sample_type=pbs_sample_type,
         pbs_concentration=pbs_concentration,
+        reference_mode=reference_mode,
     )
 
     referenced_data: Dict[str, Dict[str, np.ndarray]] = {}
@@ -90,20 +130,24 @@ def append_pbs_complex_difference(
     *,
     pbs_sample_type: str = "PBS",
     pbs_concentration: str = "reference",
+    reference_mode: str = "own_set",
     eps: float = 1e-12,
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
-    Append set-specific complex PBS-reference features.
+    Append complex features using the selected PBS-reference mode.
 
-    Two channels are appended to the existing channels:
+    Five channels are appended to the existing channels:
 
     - ``complex_ratio_phase``: phase of ``signal / mean_PBS``.
     - ``complex_subtraction_magnitude``: magnitude of ``signal - mean_PBS``.
+    - ``phase_conjugate_difference``: phase of ``signal * conj(mean_PBS)``.
+    - cosine and sine of the conjugate-product phase difference.
     """
-    pbs_reference = _get_set_specific_pbs_reference(
+    pbs_reference = _get_pbs_reference(
         data,
         pbs_sample_type=pbs_sample_type,
         pbs_concentration=pbs_concentration,
+        reference_mode=reference_mode,
     )
     if pbs_reference.shape[-1] < 2:
         raise ValueError(

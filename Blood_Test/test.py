@@ -10,10 +10,16 @@ from Blood_Test.Functions import (
     downsample_nested_data,
     exclude_data_blocks,
     load_blood_folder,
+    plot_bacterial_set_differences,
     plot_difference_channel_samples,
     plot_difference_channel_summary,
     plot_filtering_comparison,
+    plot_original_phase_set_differences,
+    plot_pbs_set_differences,
+    plot_pbs_representative_set_differences,
     plot_raw_signal_representatives,
+    plot_representative_channel_samples,
+    plot_representative_sets_by_concentration,
     print_blood_data_summary,
 )
 from Blood_Test.Model import dataset, training
@@ -36,6 +42,10 @@ EXCLUDED_DATA_BLOCKS = (
 # "leave_one_set_out" for three folds (set 1-set 3).
 EVALUATION_METHOD = "leave_one_set_out"
 
+# Choose "own_set" for the original correction, or "other_sets_mean" so each
+# set is corrected using the average PBS reference from the other two sets.
+PBS_REFERENCE_MODE = "own_set"
+
 raw_data = load_blood_folder(DATA_DIR)
 raw_data = exclude_data_blocks(
     raw_data,
@@ -48,50 +58,110 @@ print_blood_data_summary(raw_data)
 ## Filter real/imaginary signals and recompute amplitude/phase
 filtered_data = apply_savgol_to_re_im_and_recompute(
     raw_data,
-    window_length=101,
+    window_length=31,
     polyorder=3,
 )
-print("Savitzky-Golay filtering completed: window_length=101, polyorder=3")
+print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
 # plot_filtering_comparison(raw_data, filtered_data)
+# plot_pbs_set_differences(filtered_data)
+plot_bacterial_set_differences(filtered_data)
+
+
+## Compare bacterial set means after corresponding own-set PBS correction
+# This diagnostic branch is deliberately independent of PBS_REFERENCE_MODE:
+# Set 1 uses PBS 1, Set 2 uses PBS 2, and Set 3 uses PBS 3.
+own_set_plain_difference_data = append_pbs_plain_difference(
+    filtered_data,
+    reference_mode="own_set",
+)
+own_set_complex_difference_data = append_pbs_complex_difference(
+    own_set_plain_difference_data,
+    reference_mode="own_set",
+)
+# plot_bacterial_set_differences(
+#     own_set_complex_difference_data,
+#     channel_indices=(4, 5, 9, 10),
+#     comparison_label="Channels 4, 5, 9, 10 using corresponding own-set PBS",
+# )
 
 
 ## Calculate set-specific PBS-referenced features
-# For each set, average its five PBS repetitions and append the pointwise
-# [real, imaginary, amplitude, phase] differences from that set's mean PBS trace.
-plain_difference_data = append_pbs_plain_difference(filtered_data)
+# Append pointwise [real, imaginary, amplitude, phase] differences using the
+# selected own-set or cross-set PBS reference strategy.
+plain_difference_data = append_pbs_plain_difference(
+    filtered_data,
+    reference_mode=PBS_REFERENCE_MODE,
+)
 
-# Append two complex-valued comparison features using the same set's mean PBS:
-# the phase of (SAU / PBS) and the magnitude of (SAU - PBS).
-complex_difference_data = append_pbs_complex_difference(plain_difference_data)
+# Append complex-valued comparison features using the selected PBS reference.
+complex_difference_data = append_pbs_complex_difference(
+    plain_difference_data,
+    reference_mode=PBS_REFERENCE_MODE,
+)
 
-# Smooth all ten existing and PBS-derived channels along the frequency axis.
+# Smooth all thirteen existing and PBS-derived channels along the frequency axis.
 filtered_difference_data = apply_savgol_filter_nested(
     complex_difference_data,
     window_length=31,
     polyorder=3,
 )
-print("PBS difference calculation and Savitzky-Golay filtering completed")
+print(
+    "PBS difference calculation and Savitzky-Golay filtering completed: "
+    f"reference_mode={PBS_REFERENCE_MODE}"
+)
+channel_indices = (10, )
 
 plot_difference_channel_samples(
     complex_difference_data,
-    channel_indices=(8, 11, 12),
+    channel_indices=channel_indices,
     samples_per_group=4,
     random_seed=42,
 )
 plot_difference_channel_summary(
     complex_difference_data,
-    channel_indices=(8, 11, 12),
+    channel_indices=channel_indices,
 )
 
 plot_difference_channel_samples(
     filtered_difference_data,
-    channel_indices=(8, 11, 12),
+    channel_indices=channel_indices,
     samples_per_group=4,
     random_seed=42,
 )
 plot_difference_channel_summary(
     filtered_difference_data,
-    channel_indices=(8, 11, 12),
+    channel_indices=channel_indices,
+)
+
+
+## One closest-to-mean sample per concentration, with one figure per set
+# Use channel 8 from filtered_difference_data, before downsampling. The function
+# reports the selected biological sample and its circular RMSE to the mean.
+representative_figures, representative_samples = plot_representative_channel_samples(
+    filtered_difference_data,
+    channel_index=8,
+)
+
+
+## Compare PBS differences and directly overlay the existing representatives
+# PBS pairs share one plot. For representatives, plot Sets 1, 2, 3 together
+# within each concentration, using the same stored curves without subtraction.
+set_phase_comparison_figures, set_phase_differences = plot_pbs_representative_set_differences(
+    filtered_data,
+    representative_samples,
+    include_representative_differences=False,
+)
+representative_set_comparison_figures = plot_representative_sets_by_concentration(
+    representative_samples,
+)
+
+
+## Original filtered phase differences, reusing the same selected sample IDs
+# Read channel 3 from filtered_data before PBS correction. One figure per
+# concentration overlays Set 1-2, Set 1-3, Set 2-3. Do not use channel-8 curves.
+original_phase_difference_figures, original_phase_differences = plot_original_phase_set_differences(
+    filtered_data,
+    representative_samples,
 )
 
 
@@ -112,7 +182,7 @@ print(
 # A group is one independent (set, concentration, sample), containing 5 repetitions.
 grouped_data = dataset.build_concentration_dataset(
     downsampled_difference_data,
-    channel_indices=(11, ),  # complex_ratio_phase
+    channel_indices=(10, ),  # complex_ratio_phase
 )
 
 # Select either the eight-fold sample evaluation or the stricter three-fold

@@ -55,6 +55,10 @@ EXCLUDED_DATA_BLOCKS = (
 # "leave_one_set_out" for three folds (set 1-set 3).
 EVALUATION_METHOD = "leave_one_sample_out"
 
+# Choose "own_set" for the original correction, or "other_sets_mean" so each
+# set is corrected using the average PBS reference from the other two sets.
+PBS_REFERENCE_MODE = "other_sets_mean"
+
 # Enable each experiment independently. The new difference-pair mode evaluates
 # all C(7, 2) = 21 unique pairs formed from channels 4 through 10.
 RUN_TWO_CHANNEL_COMPARISON = False
@@ -80,13 +84,19 @@ print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
 
 
 ## Calculate set-specific PBS-referenced features
-# For each set, average its five PBS repetitions and append the pointwise
-# [real, imaginary, amplitude, phase] differences from that set's mean PBS trace.
-plain_difference_data = append_pbs_plain_difference(filtered_data)
+# Append pointwise [real, imaginary, amplitude, phase] differences using the
+# selected own-set or cross-set PBS reference strategy.
+plain_difference_data = append_pbs_plain_difference(
+    filtered_data,
+    reference_mode=PBS_REFERENCE_MODE,
+)
 
 # Append two complex-valued comparison features using the same set's mean PBS:
 # the phase of (SAU / PBS) and the magnitude of (SAU - PBS).
-complex_difference_data = append_pbs_complex_difference(plain_difference_data)
+complex_difference_data = append_pbs_complex_difference(
+    plain_difference_data,
+    reference_mode=PBS_REFERENCE_MODE,
+)
 
 # Smooth all ten existing and PBS-derived channels along the frequency axis.
 filtered_difference_data = apply_savgol_filter_nested(
@@ -94,7 +104,10 @@ filtered_difference_data = apply_savgol_filter_nested(
     window_length=31,
     polyorder=3,
 )
-print("PBS difference calculation and Savitzky-Golay filtering completed")
+print(
+    "PBS difference calculation and Savitzky-Golay filtering completed: "
+    f"reference_mode={PBS_REFERENCE_MODE}"
+)
 
 
 ## Downsample the processed signals
