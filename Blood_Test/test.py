@@ -49,7 +49,7 @@ EXCLUDED_DATA_BLOCKS = (
 # Start with the narrow peak near index 8890; edit/add bands as needed.
 # Set EXCLUDED_FREQUENCY_BANDS = () to keep the complete signal.
 EXCLUDED_FREQUENCY_BANDS = (
-    (8800, 9000),
+    # (8800, 9000),
     # (10500, 10700),  # Example of a second band.
 )
 DOWNSAMPLE_RATIO = 100
@@ -58,8 +58,8 @@ DOWNSAMPLE_RATIO = 100
 # "leave_one_set_out" for three folds (set 1-set 3).
 EVALUATION_METHOD = "leave_one_set_out"
 
-# Choose "own_set" for the original correction, or "other_sets_mean" so each
-# set is corrected using the average PBS reference from the other two sets.
+# Choose "own_set" for each set's own PBS, or "shared_baseline" to correct
+# ALL sets using (mean PBS Set 2 + mean PBS Set 3) / 2, excluding PBS Set 1.
 PBS_REFERENCE_MODE = "own_set"
 
 raw_data = load_blood_folder(DATA_DIR)
@@ -98,9 +98,9 @@ own_set_complex_difference_data = append_pbs_complex_difference(
 # )
 
 
-## Calculate set-specific PBS-referenced features
+## Calculate PBS-referenced features
 # Append pointwise [real, imaginary, amplitude, phase] differences using the
-# selected own-set or cross-set PBS reference strategy.
+# selected own-set or shared-baseline PBS reference strategy.
 plain_difference_data = append_pbs_plain_difference(
     filtered_data,
     reference_mode=PBS_REFERENCE_MODE,

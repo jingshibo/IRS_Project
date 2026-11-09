@@ -7,7 +7,7 @@ import numpy as np
 from .data_loader import AMP_IDX, IM_IDX, PHASE_IDX, RE_IDX
 
 
-PBS_REFERENCE_MODES = {"own_set", "other_sets_mean"}
+PBS_REFERENCE_MODES = {"own_set", "shared_baseline"}
 
 
 def _get_pbs_reference(
@@ -17,6 +17,12 @@ def _get_pbs_reference(
     pbs_concentration: str,
     reference_mode: str,
 ) -> np.ndarray:
+    """Return own-set means or the same PBS-2/PBS-3 baseline for every set."""
+    if reference_mode not in PBS_REFERENCE_MODES:
+        raise ValueError(
+            f"reference_mode must be one of {sorted(PBS_REFERENCE_MODES)}, "
+            f"got {reference_mode!r}"
+        )
     if (
         pbs_sample_type not in data
         or pbs_concentration not in data[pbs_sample_type]
@@ -29,44 +35,42 @@ def _get_pbs_reference(
         data[pbs_sample_type][pbs_concentration],
         dtype=np.float32,
     )
-    if pbs_block.ndim != 5:
+    if pbs_block.ndim != 5 or pbs_block.shape[-1] < 2:
         raise ValueError(
             "Expected PBS block with shape "
-            f"[set, sample, repetition, frequency, channel], got {pbs_block.shape}"
+            f"[set, sample, repetition, frequency, channel>=2], got {pbs_block.shape}"
         )
 
-    # Preserve the set axis and average PBS samples/repetitions within each set.
-    set_means = np.nanmean(pbs_block, axis=(1, 2), dtype=np.float32)
     if reference_mode == "own_set":
-        return set_means
-    if reference_mode != "other_sets_mean":
+        # Preserve the original own-set calculation.
+        return np.nanmean(pbs_block, axis=(1, 2), dtype=np.float32)
+    if pbs_block.shape[0] < 3:
         raise ValueError(
-            f"reference_mode must be one of {sorted(PBS_REFERENCE_MODES)}, "
-            f"got {reference_mode!r}"
-        )
-    if set_means.shape[0] < 2:
-        raise ValueError(
-            "reference_mode='other_sets_mean' requires at least two PBS sets"
+            "reference_mode='shared_baseline' requires PBS Sets 2 and 3"
         )
 
-    references = np.empty_like(set_means)
-    for target_set in range(set_means.shape[0]):
-        other_sets = np.delete(set_means, target_set, axis=0)
-        references[target_set] = np.nanmean(
-            other_sets,
-            axis=0,
-            dtype=np.float32,
+    # Average repetitions within PBS Sets 2 and 3 first, then give their means
+    # equal weight. PBS Set 1 never contributes, including for target Sets 2/3.
+    baseline_set_means = np.nanmean(pbs_block[1:3], axis=(1, 2), dtype=np.float32)
+    if not np.isfinite(baseline_set_means[..., :2]).all():
+        raise ValueError(
+            "shared_baseline requires valid real/imaginary PBS means in both "
+            "Sets 2 and 3 at every frequency"
         )
+    shared_reference = baseline_set_means.mean(axis=0, dtype=np.float32)
 
-    # Average cross-set references in the complex plane, then derive amplitude
-    # and phase from the averaged real and imaginary components.
-    if references.shape[-1] > PHASE_IDX:
+    # Derive amplitude and phase from the shared complex baseline rather than
+    # averaging the source amplitudes or wrapped phase angles.
+    if shared_reference.shape[-1] > PHASE_IDX:
         complex_reference = (
-            references[..., RE_IDX] + 1j * references[..., IM_IDX]
+            shared_reference[..., RE_IDX] + 1j * shared_reference[..., IM_IDX]
         )
-        references[..., AMP_IDX] = np.abs(complex_reference)
-        references[..., PHASE_IDX] = np.angle(complex_reference)
-    return references
+        shared_reference[..., AMP_IDX] = np.abs(complex_reference)
+        shared_reference[..., PHASE_IDX] = np.angle(complex_reference)
+    return np.broadcast_to(
+        shared_reference,
+        (pbs_block.shape[0], *shared_reference.shape),
+    ).copy()
 
 
 def append_pbs_plain_difference(
@@ -80,8 +84,10 @@ def append_pbs_plain_difference(
     Append pointwise differences from the selected mean PBS reference trace.
 
     ``reference_mode='own_set'`` uses each set's own mean PBS. With
-    ``reference_mode='other_sets_mean'``, each target set uses the pointwise
-    mean PBS from all other sets.
+    ``reference_mode='shared_baseline'``, EVERY set uses the same pointwise
+    (mean_PBS_Set_2 + mean_PBS_Set_3) / 2. Each set mean averages its PBS
+    repetitions first; amplitude and phase come from the shared complex mean.
+    PBS Set 1 is excluded from this shared reference.
 
     Input channels::
 
@@ -135,6 +141,9 @@ def append_pbs_complex_difference(
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
     Append complex features using the selected PBS-reference mode.
+
+    ``own_set`` uses each set's own mean PBS. ``shared_baseline`` uses the same
+    (mean_PBS_Set_2 + mean_PBS_Set_3) / 2 for ALL sets, excluding PBS Set 1.
 
     Five channels are appended to the existing channels:
 

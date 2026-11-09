@@ -52,9 +52,9 @@ EXCLUDED_DATA_BLOCKS = (
 # "leave_one_set_out" for three folds (set 1-set 3).
 EVALUATION_METHOD = "leave_one_sample_out"
 
-# Choose "own_set" for the original correction, or "other_sets_mean" so each
-# set is corrected using the average PBS reference from the other two sets.
-PBS_REFERENCE_MODE = "other_sets_mean"
+# Choose "own_set" for each set's own PBS, or "shared_baseline" to correct
+# ALL sets using (mean PBS Set 2 + mean PBS Set 3) / 2, excluding PBS Set 1.
+PBS_REFERENCE_MODE = "shared_baseline"
 
 # Enable each experiment independently. The new difference-pair mode evaluates
 # all C(7, 2) = 21 unique pairs formed from channels 4 through 10.
@@ -81,22 +81,22 @@ filtered_data = apply_savgol_to_re_im_and_recompute(
 print("Savitzky-Golay filtering completed: window_length=31, polyorder=3")
 
 
-## Calculate set-specific PBS-referenced features
+## Calculate PBS-referenced features
 # Append pointwise [real, imaginary, amplitude, phase] differences using the
-# selected own-set or cross-set PBS reference strategy.
+# selected own-set or shared-baseline PBS reference strategy.
 plain_difference_data = append_pbs_plain_difference(
     filtered_data,
     reference_mode=PBS_REFERENCE_MODE,
 )
 
-# Append two complex-valued comparison features using the same set's mean PBS:
-# the phase of (SAU / PBS) and the magnitude of (SAU - PBS).
+# Append five complex comparison features using the same selected reference:
+# ratio phase, difference magnitude, conjugate-product phase, its cosine/sine.
 complex_difference_data = append_pbs_complex_difference(
     plain_difference_data,
     reference_mode=PBS_REFERENCE_MODE,
 )
 
-# Smooth all ten existing and PBS-derived channels along the frequency axis.
+# Smooth all thirteen existing and PBS-derived channels along the frequency axis.
 filtered_difference_data = apply_savgol_filter_nested(
     complex_difference_data,
     window_length=31,
@@ -110,7 +110,7 @@ print(
 
 ## Downsample the processed signals
 # Keep every 100th frequency point, reducing 20,000 points to 200 while
-# preserving every set, sample, repetition, and all 10 signal channels.
+# preserving every set, sample, repetition, and all thirteen signal channels.
 downsampled_difference_data = downsample_nested_data(
     filtered_difference_data,
     ratio=100,
